@@ -1,0 +1,48 @@
+# Dependencies
+node_modules/
+python/.venv/
+python/python-runtime/
+
+# Build output
+dist/
+out/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+*.egg
+
+# Environment
+.env
+.env.*
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Electron Builder
+*.dmg
+*.AppImage
+*.snap
+*.deb
+*.rpm
+*.exe
+*.msi
+*.nsis
+
+# Logs
+*.log
+npm-debug.log*
+
+# Claude
+.claude/
