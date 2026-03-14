@@ -8,16 +8,25 @@ correct engine, then writes the generation record to the profile store.
 
 import asyncio
 import logging
+import shutil
+import threading
+import time
+from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from typing import List
 
 from app.models import GenerateRequest, GenerationResponse
 from app.services.model_manager import model_manager
 from app.services.profile_store import profile_store
+from app.config import GENERATIONS_DIR
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["tts"])
+
+# Module-level state for cancellation
+_current_generation_task: asyncio.Task | None = None
+_cancelled = threading.Event()
 
 
 @router.post("/tts/generate", response_model=GenerationResponse)
@@ -33,6 +42,10 @@ async def generate_speech(request: GenerateRequest):
     3. Wait until the engine is ready (polling in a background thread).
     4. Run inference and persist the generation record.
     """
+    global _current_generation_task, _cancelled
+
+    _cancelled.clear()
+
     profile = profile_store.get(request.profile_id)
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
@@ -78,14 +91,24 @@ async def generate_speech(request: GenerateRequest):
             )
 
     # Build engine-specific kwargs
-    dialect = request.dialect or profile.get("dialect", "MSA")
-    language = request.language or profile.get("language") or "English"
-
     if model_id == "habibi-tts":
-        generate_kwargs = {"dialect": dialect}
+        dialect = request.dialect or profile.get("dialect", "MSA")
+        language = None
+        generate_kwargs: dict = {"dialect": dialect}
+        # Pass tuning parameters if provided
+        if request.speed is not None:
+            generate_kwargs["speed"] = request.speed
+        if request.nfe_step is not None:
+            generate_kwargs["nfe_step"] = request.nfe_step
+        if request.cfg_strength is not None:
+            generate_kwargs["cfg_strength"] = request.cfg_strength
     elif model_id == "qwen3-tts":
+        dialect = None
+        language = request.language or profile.get("language") or "English"
         generate_kwargs = {"language": language}
     else:
+        dialect = profile.get("dialect")
+        language = profile.get("language")
         generate_kwargs = {}
 
     logger.info(
@@ -96,6 +119,7 @@ async def generate_speech(request: GenerateRequest):
         len(request.text),
     )
 
+    gen_start_time = time.time()
     try:
         result = await asyncio.to_thread(
             engine.generate,
@@ -107,9 +131,35 @@ async def generate_speech(request: GenerateRequest):
     except ValueError as exc:
         # Validation errors (e.g. reference audio too short) are client errors
         raise HTTPException(status_code=422, detail=str(exc))
+    except RuntimeError as exc:
+        error_msg = str(exc)
+        # Provide a friendlier message for tensor size mismatch errors
+        if "Sizes of tensors must match" in error_msg:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "Text is too long for the reference audio. "
+                    "Try shorter text or use a longer reference audio clip."
+                ),
+            )
+        logger.error("TTS generation failed: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"TTS generation failed: {exc}")
     except Exception as exc:
         logger.error("TTS generation failed: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail=f"TTS generation failed: {exc}")
+
+    # Check if generation was cancelled while inference was running
+    if _cancelled.is_set():
+        # Clean up the generated audio file
+        try:
+            gen_dir = Path(result["audio_path"]).parent
+            if gen_dir.exists():
+                shutil.rmtree(gen_dir)
+        except Exception:
+            pass
+        raise HTTPException(status_code=499, detail="Generation cancelled")
+
+    gen_elapsed = time.time() - gen_start_time
 
     generation = profile_store.add_generation(
         profile_id=request.profile_id,
@@ -120,9 +170,24 @@ async def generate_speech(request: GenerateRequest):
         duration=result["duration"],
         model=model_id,
         language=language if model_id == "qwen3-tts" else None,
+        elapsed_seconds=gen_elapsed,
     )
 
     return generation
+
+
+@router.post("/tts/cancel")
+async def cancel_generation():
+    """
+    Signal that the current generation should be cancelled.
+
+    The actual model inference cannot be interrupted mid-computation, but
+    once it finishes, the result will be discarded and the generated audio
+    file cleaned up.
+    """
+    _cancelled.set()
+    logger.info("Generation cancellation requested")
+    return {"status": "cancelling"}
 
 
 @router.get("/tts/generations", response_model=List[GenerationResponse])

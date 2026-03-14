@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import axios from 'axios'
 import type { Profile } from '../types/profile'
 import type { Generation } from '../types/tts'
 import type { DialectCode } from '../types/dialect'
@@ -7,6 +8,8 @@ import * as profilesApi from '../api/profiles'
 import * as ttsApi from '../api/tts'
 import * as audioApi from '../api/audio'
 import * as modelsApi from '../api/models'
+import * as sttApi from '../api/stt'
+import type { STTModelInfo, Transcription } from '../api/stt'
 
 interface Toast {
   id: string
@@ -54,14 +57,55 @@ interface AppState {
   generations: Generation[]
   setGenerationText: (text: string) => void
   generate: () => Promise<void>
+  stopGeneration: () => void
   fetchGenerations: () => Promise<void>
   deleteGeneration: (id: string) => Promise<void>
+  prepareRegeneration: (generation: Generation) => void
+
+  // Generation Parameters (HabibiTTS)
+  genSpeed: number
+  genNfeStep: number
+  genCfgStrength: number
+  setGenSpeed: (v: number) => void
+  setGenNfeStep: (v: number) => void
+  setGenCfgStrength: (v: number) => void
 
   // UI
   toasts: Toast[]
   addToast: (message: string, type: Toast['type']) => void
   dismissToast: (id: string) => void
+
+  // STT
+  sttModel: string
+  setSttModel: (model: string) => void
+  sttModels: STTModelInfo[]
+  fetchSttModels: () => Promise<void>
+  downloadSttModel: (modelId: string) => Promise<void>
+  deleteSttModel: (modelId: string) => Promise<void>
+
+  // STT Transcription State (persistent across navigation)
+  sttTranscribing: boolean
+  sttResult: string
+  sttAudioBlob: Blob | null
+  sttAudioSource: 'record' | 'import'
+  setSttAudioBlob: (blob: Blob | null, source: 'record' | 'import') => void
+  transcribe: () => Promise<void>
+  stopTranscription: () => void
+  clearSttSession: () => void
+
+  // Transcription History
+  transcriptions: Transcription[]
+  fetchTranscriptions: () => Promise<void>
+  deleteTranscription: (id: string) => Promise<void>
+
+  // Developer
+  devMode: boolean
+  setDevMode: (enabled: boolean) => void
 }
+
+// Module-level AbortControllers for cancelling in-flight requests
+let _generationAbort: AbortController | null = null
+let _sttAbort: AbortController | null = null
 
 export const useAppStore = create<AppState>((set, get) => ({
   // Backend
@@ -94,6 +138,12 @@ export const useAppStore = create<AppState>((set, get) => ({
         try {
           const generations = await ttsApi.fetchGenerations()
           set({ generations })
+        } catch {
+          // silent
+        }
+        try {
+          const transcriptions = await sttApi.fetchTranscriptions()
+          set({ transcriptions })
         } catch {
           // silent
         }
@@ -248,20 +298,38 @@ export const useAppStore = create<AppState>((set, get) => ({
   currentGeneration: null,
   generations: [],
   setGenerationText: (text) => set({ generationText: text }),
+
+  // Generation Parameters
+  genSpeed: parseFloat(localStorage.getItem('voicelab-gen-speed') || '1.0'),
+  genNfeStep: parseInt(localStorage.getItem('voicelab-gen-nfe') || '32'),
+  genCfgStrength: parseFloat(localStorage.getItem('voicelab-gen-cfg') || '2.0'),
+  setGenSpeed: (v) => { localStorage.setItem('voicelab-gen-speed', String(v)); set({ genSpeed: v }) },
+  setGenNfeStep: (v) => { localStorage.setItem('voicelab-gen-nfe', String(v)); set({ genNfeStep: v }) },
+  setGenCfgStrength: (v) => { localStorage.setItem('voicelab-gen-cfg', String(v)); set({ genCfgStrength: v }) },
+
   generate: async () => {
-    const { selectedProfileId, generationText, profiles } = get()
+    const { selectedProfileId, generationText, profiles, genSpeed, genNfeStep, genCfgStrength } = get()
     if (!selectedProfileId || !generationText.trim()) return
 
     const profile = profiles.find((p) => p.id === selectedProfileId)
     if (!profile) return
 
-    set({ isGenerating: true })
+    const isHabibi = (profile.model || 'habibi-tts') === 'habibi-tts'
+
+    // Create a new AbortController for this generation
+    _generationAbort = new AbortController()
+
+    set({ isGenerating: true, currentGeneration: null })
     try {
-      const generation = await ttsApi.generateSpeech({
-        profile_id: selectedProfileId,
-        text: generationText,
-        dialect: profile.dialect
-      })
+      const generation = await ttsApi.generateSpeech(
+        {
+          profile_id: selectedProfileId,
+          text: generationText,
+          dialect: profile.dialect,
+          ...(isHabibi ? { speed: genSpeed, nfe_step: genNfeStep, cfg_strength: genCfgStrength } : {})
+        },
+        _generationAbort.signal
+      )
       set((state) => ({
         currentGeneration: generation,
         generations: [generation, ...state.generations],
@@ -269,10 +337,25 @@ export const useAppStore = create<AppState>((set, get) => ({
       }))
       get().addToast('Speech generated', 'success')
     } catch (err: any) {
+      if (axios.isCancel(err) || err?.name === 'CanceledError') {
+        set({ isGenerating: false })
+        get().addToast('Generation stopped', 'info')
+        return
+      }
       set({ isGenerating: false })
       const msg = err?.response?.data?.detail || 'Generation failed'
       get().addToast(msg, 'error')
+    } finally {
+      _generationAbort = null
     }
+  },
+  stopGeneration: () => {
+    if (_generationAbort) {
+      _generationAbort.abort()
+      _generationAbort = null
+    }
+    // Also signal the backend to cancel/discard the in-progress generation
+    ttsApi.cancelGeneration().catch(() => {})
   },
   fetchGenerations: async () => {
     if (!get().backendReady) return
@@ -291,6 +374,18 @@ export const useAppStore = create<AppState>((set, get) => ({
     }))
     get().addToast('Generation deleted', 'success')
   },
+  prepareRegeneration: (generation) => {
+    // Find matching profile to select it
+    const profile = get().profiles.find((p) => p.id === generation.profile_id)
+    set({
+      generationText: generation.text,
+      selectedProfileId: profile ? profile.id : null,
+      currentGeneration: null
+    })
+    if (!profile) {
+      get().addToast('Original profile not found — select a profile manually', 'info')
+    }
+  },
 
   // UI
   toasts: [],
@@ -303,5 +398,139 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   dismissToast: (id) => {
     set((state) => ({ toasts: state.toasts.filter((t) => t.id !== id) }))
+  },
+
+  // STT
+  sttModel: localStorage.getItem('voicelab-stt-model') || 'openai/whisper-large-v3-turbo',
+  setSttModel: (model) => {
+    localStorage.setItem('voicelab-stt-model', model)
+    set({ sttModel: model })
+  },
+  sttModels: [],
+  fetchSttModels: async () => {
+    if (!get().backendReady) return
+    try {
+      const models = await sttApi.fetchSTTModels()
+      set({ sttModels: models })
+    } catch {
+      // silent
+    }
+  },
+  downloadSttModel: async (modelId) => {
+    try {
+      await sttApi.downloadSTTModel(modelId)
+      // Update status after successful download
+      set({
+        sttModels: get().sttModels.map((m) =>
+          m.id === modelId ? { ...m, status: 'downloaded' as const } : m
+        )
+      })
+      get().addToast(`${modelId.split('/').pop()} downloaded`, 'success')
+      // Refresh full status from backend
+      get().fetchSttModels()
+    } catch (err: any) {
+      get().addToast(err?.response?.data?.detail || 'Download failed', 'error')
+      get().fetchSttModels()
+    }
+  },
+  deleteSttModel: async (modelId) => {
+    try {
+      await sttApi.deleteSTTModel(modelId)
+      set({
+        sttModels: get().sttModels.map((m) =>
+          m.id === modelId ? { ...m, status: 'not_downloaded' as const } : m
+        )
+      })
+      // If the deleted model was selected, keep the selection (user might download again)
+      get().addToast(`${modelId.split('/').pop()} removed`, 'success')
+    } catch (err: any) {
+      get().addToast(err?.response?.data?.detail || 'Failed to remove model', 'error')
+    }
+  },
+
+  // STT Transcription State
+  sttTranscribing: false,
+  sttResult: '',
+  sttAudioBlob: null,
+  sttAudioSource: 'record',
+  setSttAudioBlob: (blob, source) => set({ sttAudioBlob: blob, sttAudioSource: source }),
+  transcribe: async () => {
+    const { sttAudioBlob, sttModel } = get()
+    if (!sttAudioBlob) return
+
+    _sttAbort = new AbortController()
+    set({ sttTranscribing: true, sttResult: '' })
+
+    try {
+      const res = await sttApi.transcribeAudio(
+        sttAudioBlob,
+        sttModel,
+        undefined,
+        _sttAbort.signal,
+        true // save to history
+      )
+      set({ sttResult: res.text, sttTranscribing: false })
+      get().addToast('Transcription complete', 'success')
+      // Refresh transcription history from backend to ensure consistency
+      get().fetchTranscriptions()
+    } catch (err: any) {
+      if (axios.isCancel(err) || err?.name === 'CanceledError') {
+        set({ sttTranscribing: false })
+        get().addToast('Transcription cancelled', 'info')
+        return
+      }
+      set({ sttTranscribing: false })
+      get().addToast(err?.response?.data?.detail || 'Transcription failed', 'error')
+    } finally {
+      _sttAbort = null
+    }
+  },
+  stopTranscription: () => {
+    if (_sttAbort) {
+      _sttAbort.abort()
+      _sttAbort = null
+    }
+  },
+  clearSttSession: () => {
+    if (_sttAbort) {
+      _sttAbort.abort()
+      _sttAbort = null
+    }
+    set({
+      sttTranscribing: false,
+      sttResult: '',
+      sttAudioBlob: null,
+      sttAudioSource: 'record' as const
+    })
+  },
+
+  // Transcription History
+  transcriptions: [],
+  fetchTranscriptions: async () => {
+    if (!get().backendReady) return
+    try {
+      const transcriptions = await sttApi.fetchTranscriptions()
+      set({ transcriptions })
+    } catch {
+      // silent
+    }
+  },
+  deleteTranscription: async (id) => {
+    try {
+      await sttApi.deleteTranscription(id)
+      set((state) => ({
+        transcriptions: state.transcriptions.filter((t) => t.id !== id)
+      }))
+      get().addToast('Transcription deleted', 'success')
+    } catch (err: any) {
+      get().addToast(err?.response?.data?.detail || 'Failed to delete transcription', 'error')
+    }
+  },
+
+  // Developer
+  devMode: localStorage.getItem('voicelab-dev-mode') === 'true',
+  setDevMode: (enabled) => {
+    localStorage.setItem('voicelab-dev-mode', enabled ? 'true' : 'false')
+    set({ devMode: enabled })
   }
 }))

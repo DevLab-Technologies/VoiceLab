@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ArrowLeft, Save, Loader2 } from 'lucide-react'
+import { ArrowLeft, Save, Loader2, AudioLines } from 'lucide-react'
 import Header from '../components/layout/Header'
 import ModelSelector from '../components/profiles/ModelSelector'
 import DialectSelector from '../components/profiles/DialectSelector'
@@ -9,6 +9,7 @@ import LanguageSelector from '../components/profiles/LanguageSelector'
 import AudioRecorder from '../components/audio/AudioRecorder'
 import AudioImporter from '../components/audio/AudioImporter'
 import { useAppStore } from '../store'
+import { transcribeAudio } from '../api/stt'
 import type { DialectCode } from '../types/dialect'
 import type { ModelId } from '../types/model'
 
@@ -24,6 +25,7 @@ export default function NewProfilePage() {
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null)
   const [audioSource, setAudioSource] = useState<'record' | 'import'>('record')
   const [saving, setSaving] = useState(false)
+  const [transcribing, setTranscribing] = useState(false)
 
   useEffect(() => {
     fetchModels()
@@ -61,6 +63,21 @@ export default function NewProfilePage() {
   const handleRecorded = (blob: Blob) => {
     setAudioBlob(blob)
     setAudioSource('record')
+  }
+
+  const handleTranscribe = async () => {
+    if (!audioBlob) return
+    setTranscribing(true)
+    try {
+      const { sttModel } = useAppStore.getState()
+      const res = await transcribeAudio(audioBlob, sttModel)
+      setRefText(res.text)
+      addToast('Audio transcribed', 'success')
+    } catch (err: any) {
+      addToast(err?.response?.data?.detail || 'Transcription failed', 'error')
+    } finally {
+      setTranscribing(false)
+    }
   }
 
   const isRTL = model === 'habibi-tts'
@@ -110,7 +127,12 @@ export default function NewProfilePage() {
 
         {/* Audio Source */}
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-3">Reference Audio</label>
+          <label className="block text-sm font-medium text-gray-300 mb-1">Reference Audio</label>
+          <p className="text-xs text-gray-500 mb-3">
+            {model === 'habibi-tts'
+              ? 'Record or import 5–15 seconds of clear speech. Longer audio is trimmed automatically.'
+              : 'Record or import a clear speech sample for voice cloning.'}
+          </p>
 
           {/* Tab switcher */}
           <div className="flex gap-1 bg-surface-200 p-1 rounded-lg mb-4 w-fit">
@@ -141,11 +163,30 @@ export default function NewProfilePage() {
 
         {/* Reference Text */}
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">
-            Reference Transcription
-          </label>
+          <div className="flex items-center justify-between mb-2">
+            <label className="block text-sm font-medium text-gray-300">
+              Reference Transcription
+            </label>
+            <button
+              onClick={handleTranscribe}
+              disabled={!audioBlob || transcribing}
+              className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-accent hover:text-accent/80 bg-accent/10 hover:bg-accent/15 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {transcribing ? (
+                <>
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  Transcribing...
+                </>
+              ) : (
+                <>
+                  <AudioLines className="w-3 h-3" />
+                  Auto-Transcribe
+                </>
+              )}
+            </button>
+          </div>
           <p className="text-xs text-gray-500 mb-2">
-            Type the exact words spoken in the reference audio
+            Type the exact words spoken in the reference audio, or use auto-transcribe
           </p>
           <textarea
             dir={isRTL ? 'rtl' : 'ltr'}

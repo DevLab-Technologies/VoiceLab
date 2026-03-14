@@ -1,6 +1,7 @@
 import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+import { autoUpdater } from 'electron-updater'
 import { startPythonBackend, stopPythonBackend, getBackendPort } from './python'
 
 let mainWindow: BrowserWindow | null = null
@@ -37,7 +38,39 @@ function createWindow(): void {
   }
 }
 
-// IPC Handlers
+// ── Auto-Updater ──────────────────────────────────────────────────────
+autoUpdater.autoDownload = false
+autoUpdater.autoInstallOnAppQuit = true
+
+function sendUpdateStatus(status: string, info?: Record<string, unknown>): void {
+  mainWindow?.webContents.send('update-status', { status, ...info })
+}
+
+autoUpdater.on('checking-for-update', () => {
+  sendUpdateStatus('checking')
+})
+
+autoUpdater.on('update-available', (info) => {
+  sendUpdateStatus('available', { version: info.version })
+})
+
+autoUpdater.on('update-not-available', () => {
+  sendUpdateStatus('up-to-date')
+})
+
+autoUpdater.on('download-progress', (progress) => {
+  sendUpdateStatus('downloading', { percent: Math.round(progress.percent) })
+})
+
+autoUpdater.on('update-downloaded', (info) => {
+  sendUpdateStatus('downloaded', { version: info.version })
+})
+
+autoUpdater.on('error', (err) => {
+  sendUpdateStatus('error', { message: err.message })
+})
+
+// ── IPC Handlers ──────────────────────────────────────────────────────
 ipcMain.handle('get-backend-port', () => getBackendPort())
 
 ipcMain.handle('show-save-dialog', async (_, options) => {
@@ -53,6 +86,35 @@ ipcMain.handle('show-open-dialog', async (_, options) => {
 })
 
 ipcMain.handle('get-user-data-path', () => app.getPath('userData'))
+
+ipcMain.handle('get-app-version', () => app.getVersion())
+
+ipcMain.handle('check-for-updates', async () => {
+  try {
+    await autoUpdater.checkForUpdates()
+    return { success: true }
+  } catch (err: any) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('download-update', async () => {
+  try {
+    await autoUpdater.downloadUpdate()
+    return { success: true }
+  } catch (err: any) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('install-update', () => {
+  autoUpdater.quitAndInstall()
+})
+
+// Set the app name for the Mac menu bar (shows "VoiceLab" instead of "Electron" in dev)
+if (process.platform === 'darwin') {
+  app.setName('VoiceLab')
+}
 
 app.whenReady().then(async () => {
   electronApp.setAppUserModelId('com.voicelab.app')

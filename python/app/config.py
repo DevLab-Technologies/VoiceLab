@@ -5,12 +5,14 @@ from pathlib import Path
 DATA_DIR = Path(os.environ.get("VOICELAB_DATA_DIR", Path.home() / ".voicelab"))
 PROFILES_DIR = DATA_DIR / "profiles"
 GENERATIONS_DIR = DATA_DIR / "generations"
+TRANSCRIPTIONS_DIR = DATA_DIR / "transcriptions"
 DB_FILE = DATA_DIR / "data.json"
 
 # Ensure directories exist
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 PROFILES_DIR.mkdir(parents=True, exist_ok=True)
 GENERATIONS_DIR.mkdir(parents=True, exist_ok=True)
+TRANSCRIPTIONS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Audio settings
 SAMPLE_RATE = 24000

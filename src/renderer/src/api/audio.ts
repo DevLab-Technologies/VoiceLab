@@ -13,6 +13,10 @@ export function getGenerationAudioUrl(generationId: string): string {
   return `${getBaseURL()}/api/audio/generations/${generationId}/output.wav`
 }
 
+export function getTranscriptionAudioUrl(transcriptionId: string): string {
+  return `${getBaseURL()}/api/audio/transcriptions/${transcriptionId}/source_audio.wav`
+}
+
 export async function fetchWaveform(
   type: 'profiles' | 'generations',
   id: string,

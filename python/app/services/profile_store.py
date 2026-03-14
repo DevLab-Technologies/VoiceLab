@@ -9,15 +9,19 @@ from typing import Optional, List
 import soundfile as sf
 from pydub import AudioSegment
 
-from app.config import DB_FILE, PROFILES_DIR, GENERATIONS_DIR, SAMPLE_RATE
+from app.config import DB_FILE, PROFILES_DIR, GENERATIONS_DIR, TRANSCRIPTIONS_DIR, SAMPLE_RATE
 
 logger = logging.getLogger(__name__)
 
 
 class ProfileStore:
     def __init__(self):
-        self._data = {"profiles": [], "generations": []}
+        self._data = {"profiles": [], "generations": [], "transcriptions": []}
         self._load()
+        # Migrate: ensure transcriptions key exists for older data files
+        if "transcriptions" not in self._data:
+            self._data["transcriptions"] = []
+            self._save()
 
     def _load(self):
         if DB_FILE.exists():
@@ -42,7 +46,7 @@ class ProfileStore:
     async def create(
         self,
         name: str,
-        dialect: str,
+        dialect: str | None,
         ref_text: str,
         audio_data: bytes,
         audio_filename: str,
@@ -153,22 +157,33 @@ class ProfileStore:
         profile_id: str,
         profile_name: str,
         text: str,
-        dialect: str,
+        dialect: str | None,
         audio_path: str,
         duration: float,
         model: str = "habibi-tts",
         language: str | None = None,
+        elapsed_seconds: float = 0.0,
     ) -> dict:
         gen_id = Path(audio_path).parent.name
         now = datetime.now(timezone.utc).isoformat()
+
+        # dialect can be None for non-Arabic models (e.g. Qwen3-TTS)
+        if dialect is None:
+            dialect_value = None
+        elif isinstance(dialect, str):
+            dialect_value = dialect
+        else:
+            dialect_value = dialect.value
+
         generation = {
             "id": gen_id,
             "profile_id": profile_id,
             "profile_name": profile_name,
             "text": text,
-            "dialect": dialect if isinstance(dialect, str) else dialect.value,
+            "dialect": dialect_value,
             "audio_path": audio_path,
             "duration": duration,
+            "elapsed_seconds": round(elapsed_seconds, 1),
             "created_at": now,
             "model": model,
             "language": language,
@@ -193,6 +208,57 @@ class ProfileStore:
                 gen_dir = GENERATIONS_DIR / generation_id
                 if gen_dir.exists():
                     shutil.rmtree(gen_dir)
+                self._save()
+                return True
+        return False
+
+    # -- Transcriptions --
+
+    def add_transcription(
+        self,
+        text: str,
+        model: str,
+        audio_path: str,
+        duration: float,
+        elapsed_seconds: float = 0.0,
+    ) -> dict:
+        transcription_id = str(uuid.uuid4())
+        now = datetime.now(timezone.utc).isoformat()
+
+        transcription = {
+            "id": transcription_id,
+            "text": text,
+            "model": model,
+            "audio_path": audio_path,
+            "duration": duration,
+            "elapsed_seconds": round(elapsed_seconds, 1),
+            "created_at": now,
+        }
+        self._data["transcriptions"].append(transcription)
+        self._save()
+        return transcription
+
+    def list_transcriptions(self) -> List[dict]:
+        return sorted(
+            self._data.get("transcriptions", []),
+            key=lambda t: t["created_at"],
+            reverse=True,
+        )
+
+    def get_transcription(self, transcription_id: str) -> Optional[dict]:
+        for t in self._data.get("transcriptions", []):
+            if t["id"] == transcription_id:
+                return t
+        return None
+
+    def delete_transcription(self, transcription_id: str) -> bool:
+        transcriptions = self._data.get("transcriptions", [])
+        for i, t in enumerate(transcriptions):
+            if t["id"] == transcription_id:
+                transcriptions.pop(i)
+                trans_dir = TRANSCRIPTIONS_DIR / transcription_id
+                if trans_dir.exists():
+                    shutil.rmtree(trans_dir)
                 self._save()
                 return True
         return False

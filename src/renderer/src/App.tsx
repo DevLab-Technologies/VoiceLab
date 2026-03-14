@@ -7,6 +7,8 @@ import ProfilesPage from './pages/ProfilesPage'
 import NewProfilePage from './pages/NewProfilePage'
 import EditProfilePage from './pages/EditProfilePage'
 import HistoryPage from './pages/HistoryPage'
+import STTPage from './pages/STTPage'
+import ModelsPage from './pages/ModelsPage'
 import SettingsPage from './pages/SettingsPage'
 import { useAppStore } from './store'
 import { initApiClient } from './api/client'
@@ -44,6 +46,8 @@ export default function App() {
         <Route path="/profiles/new" element={<NewProfilePage />} />
         <Route path="/profiles/:id/edit" element={<EditProfilePage />} />
         <Route path="/history" element={<HistoryPage />} />
+        <Route path="/stt" element={<STTPage />} />
+        <Route path="/models" element={<ModelsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>
     </Routes>

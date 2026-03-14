@@ -4,7 +4,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
-from app.config import PROFILES_DIR, GENERATIONS_DIR
+from app.config import PROFILES_DIR, GENERATIONS_DIR, TRANSCRIPTIONS_DIR
 
 router = APIRouter(tags=["audio"])
 
@@ -25,12 +25,22 @@ async def serve_generation_audio(generation_id: str, filename: str):
     return FileResponse(str(file_path), media_type="audio/wav")
 
 
+@router.get("/audio/transcriptions/{transcription_id}/{filename}")
+async def serve_transcription_audio(transcription_id: str, filename: str):
+    file_path = TRANSCRIPTIONS_DIR / transcription_id / filename
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Audio file not found")
+    return FileResponse(str(file_path), media_type="audio/wav")
+
+
 @router.get("/audio/waveform/{audio_type}/{item_id}/{filename}")
 async def get_waveform(audio_type: str, item_id: str, filename: str):
     if audio_type == "profiles":
         base_dir = PROFILES_DIR
     elif audio_type == "generations":
         base_dir = GENERATIONS_DIR
+    elif audio_type == "transcriptions":
+        base_dir = TRANSCRIPTIONS_DIR
     else:
         raise HTTPException(status_code=400, detail="Invalid audio type")
 
