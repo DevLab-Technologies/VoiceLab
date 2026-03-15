@@ -44,6 +44,7 @@ export default function YouTubeImporter({
   }
 
   const handleExtract = async () => {
+    if (!info) return
     setState('extracting')
     setError('')
     try {
@@ -51,6 +52,7 @@ export default function YouTubeImporter({
       const trimEnd = enableTrimming ? endSec : undefined
       const { audioBlob, title, duration } = await extractAudio(
         url.trim(),
+        info,
         trimStart,
         trimEnd
       )
@@ -63,7 +65,7 @@ export default function YouTubeImporter({
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && state === 'idle') handleLoad()
+    if (e.key === 'Enter' && (state === 'idle' || state === 'error')) handleLoad()
   }
 
   const handleReset = () => {

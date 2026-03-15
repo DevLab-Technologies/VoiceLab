@@ -18,13 +18,20 @@ export async function fetchVideoInfo(url: string): Promise<VideoInfo> {
 
 export async function extractAudio(
   url: string,
+  info: VideoInfo,
   startSec?: number,
   endSec?: number,
   signal?: AbortSignal
 ): Promise<{ audioBlob: Blob; title: string; duration: number }> {
   const res = await getClient().post(
     '/youtube/extract-audio',
-    { url, start_sec: startSec ?? null, end_sec: endSec ?? null },
+    {
+      url,
+      title: info.title,
+      duration: info.duration,
+      start_sec: startSec ?? null,
+      end_sec: endSec ?? null,
+    },
     {
       responseType: 'blob',
       timeout: 120000,
@@ -32,8 +39,8 @@ export async function extractAudio(
     }
   )
 
-  const title = decodeURIComponent(res.headers['x-video-title'] || 'Unknown')
-  const duration = parseInt(res.headers['x-video-duration'] || '0', 10)
+  const title = decodeURIComponent(res.headers['x-video-title'] || info.title)
+  const duration = parseInt(res.headers['x-video-duration'] || '0', 10) || info.duration
 
   return {
     audioBlob: new Blob([res.data], { type: 'audio/wav' }),

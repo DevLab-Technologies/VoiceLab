@@ -38,7 +38,6 @@ export default function NewProfilePage() {
     if (!canSave || !audioBlob) return
     setSaving(true)
     try {
-      const filename = audioSource === 'youtube' ? 'youtube.wav' : audioSource === 'import' ? 'imported.wav' : 'recording.webm'
       await createProfile(
         name,
         model,
@@ -46,7 +45,7 @@ export default function NewProfilePage() {
         model === 'qwen3-tts' ? language : undefined,
         refText,
         audioBlob,
-        filename
+        audioFilename
       )
       navigate('/profiles')
     } catch (err: any) {
@@ -85,6 +84,9 @@ export default function NewProfilePage() {
       setTranscribing(false)
     }
   }
+
+  const audioFilename =
+    audioSource === 'youtube' ? 'youtube.wav' : audioSource === 'import' ? 'imported.wav' : 'recording.webm'
 
   const isRTL = model === 'habibi-tts'
 

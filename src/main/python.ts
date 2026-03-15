@@ -1,4 +1,5 @@
-import { ChildProcess, spawn, execFileSync } from 'child_process'
+import { ChildProcess, spawn, execFile } from 'child_process'
+import { promisify } from 'util'
 import { createServer } from 'net'
 import { join } from 'path'
 import { app } from 'electron'
@@ -79,7 +80,9 @@ function healthCheck(port: number): Promise<boolean> {
   })
 }
 
-function ensureVenv(pythonDir: string): string {
+const execFileAsync = promisify(execFile)
+
+async function ensureVenv(pythonDir: string): Promise<string> {
   const isWin = process.platform === 'win32'
   const venvDir = join(pythonDir, '.venv')
   const venvPython = isWin
@@ -88,15 +91,14 @@ function ensureVenv(pythonDir: string): string {
 
   if (!existsSync(venvPython)) {
     console.log('Creating Python virtual environment...')
-    execFileSync('uv', ['venv', venvDir], { cwd: pythonDir, stdio: 'inherit' })
+    await execFileAsync('uv', ['venv', venvDir], { cwd: pythonDir })
   }
 
   // Always sync dependencies to handle missing or new packages
   console.log('Syncing Python dependencies...')
   const requirementsFile = join(pythonDir, 'requirements.txt')
-  execFileSync('uv', ['pip', 'install', '-r', requirementsFile, '--python', venvPython], {
+  await execFileAsync('uv', ['pip', 'install', '-r', requirementsFile, '--python', venvPython], {
     cwd: pythonDir,
-    stdio: 'inherit',
     timeout: 600000
   })
 
@@ -112,7 +114,7 @@ export async function startPythonBackend(): Promise<number> {
   const hasBundledRuntime = existsSync(join(pythonDir, 'python-runtime'))
   let pythonBin: string
   if (isDev && !hasBundledRuntime) {
-    pythonBin = ensureVenv(pythonDir)
+    pythonBin = await ensureVenv(pythonDir)
   } else {
     pythonBin = getPythonBin(pythonDir)
   }
