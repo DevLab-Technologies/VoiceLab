@@ -91,6 +91,8 @@ interface AppState {
   sttAudioBlob: Blob | null
   sttAudioSource: 'record' | 'import'
   setSttAudioBlob: (blob: Blob | null, source: 'record' | 'import') => void
+  setSttAudioSource: (source: 'record' | 'import') => void
+  setSttResult: (text: string) => void
   transcribe: () => Promise<void>
   stopTranscription: () => void
   clearSttSession: () => void
@@ -467,6 +469,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   sttAudioBlob: null,
   sttAudioSource: 'record',
   setSttAudioBlob: (blob, source) => set({ sttAudioBlob: blob, sttAudioSource: source }),
+  setSttAudioSource: (source) => set({ sttAudioSource: source }),
+  setSttResult: (text) => set({ sttResult: text }),
   transcribe: async () => {
     const { sttAudioBlob, sttModel } = get()
     if (!sttAudioBlob) return

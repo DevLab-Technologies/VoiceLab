@@ -8,6 +8,7 @@ function getClient() {
 export interface STTModelInfo {
   id: string
   name: string
+  label: string
   size_mb: number
   description: string
   status: 'not_downloaded' | 'downloaded' | 'loaded'

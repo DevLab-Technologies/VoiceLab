@@ -5,7 +5,6 @@ import { FolderOpen, Trash2, Bug, AudioLines, Download, RefreshCw, Loader2, Chec
 import Header from '../components/layout/Header'
 import Dialog from '../components/ui/Dialog'
 import { useAppStore } from '../store'
-import { STT_MODELS } from '../lib/stt-models'
 
 export default function SettingsPage() {
   const navigate = useNavigate()
@@ -35,11 +34,6 @@ export default function SettingsPage() {
     window.api.getUserDataPath().then((p) => setDataPath(p))
     fetchSttModels()
   }, [fetchSttModels])
-
-  const isModelDownloaded = (modelId: string) => {
-    const model = sttModels.find((m) => m.id === modelId)
-    return model ? model.status === 'downloaded' || model.status === 'loaded' : false
-  }
 
   const handleClearData = () => {
     addToast('Cache cleared', 'success')
@@ -150,9 +144,12 @@ export default function SettingsPage() {
             Select the Whisper model used for transcription. Download models from the Models page.
           </p>
           <div className="space-y-2">
-            {STT_MODELS.map((m) => {
-              const downloaded = isModelDownloaded(m.id)
+            {sttModels.map((m) => {
+              const downloaded = m.status === 'downloaded' || m.status === 'loaded'
               const selected = sttModel === m.id
+              const sizeLabel = m.size_mb >= 1000
+                ? `~${(m.size_mb / 1000).toFixed(1)} GB`
+                : `~${m.size_mb} MB`
 
               return (
                 <button
@@ -178,7 +175,7 @@ export default function SettingsPage() {
                     {!downloaded ? (
                       <Download className="w-3 h-3 text-gray-500" />
                     ) : (
-                      <span className="text-[10px] text-gray-500">{m.size}</span>
+                      <span className="text-[10px] text-gray-500">{sizeLabel}</span>
                     )}
                   </div>
                   <p className="text-[10px] text-gray-500 mt-0.5">

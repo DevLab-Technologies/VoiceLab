@@ -15,7 +15,7 @@ const navItems = [
 
 export default function Sidebar() {
   const {
-    backendReady,
+    backendReady, modelLoaded,
     appVersion, updateStatus, updateVersion, updateProgress,
     initUpdateListener, checkForUpdates, downloadUpdate, installUpdate
   } = useAppStore()
@@ -61,11 +61,15 @@ export default function Sidebar() {
           <div
             className={cn(
               'w-2 h-2 rounded-full',
-              backendReady ? 'bg-success' : 'bg-danger animate-pulse'
+              !backendReady
+                ? 'bg-danger animate-pulse'
+                : modelLoaded
+                  ? 'bg-success'
+                  : 'bg-warning animate-pulse-slow'
             )}
           />
           <span className="text-gray-500">
-            {backendReady ? 'Ready' : 'Connecting...'}
+            {!backendReady ? 'Connecting...' : modelLoaded ? 'Ready' : 'Loading model...'}
           </span>
         </div>
 

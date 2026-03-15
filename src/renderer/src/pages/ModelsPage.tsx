@@ -13,9 +13,7 @@ import {
 import Header from '../components/layout/Header'
 import { useAppStore } from '../store'
 import { MODEL_INFO } from '../lib/constants'
-import { STT_MODELS } from '../lib/stt-models'
 import type { ModelId } from '../types/model'
-import type { STTModelInfo } from '../api/stt'
 
 const MODEL_ICONS: Record<ModelId, typeof Globe> = {
   'habibi-tts': Languages,
@@ -41,12 +39,6 @@ export default function ModelsPage() {
     fetchModels()
     fetchSttModels()
   }, [fetchModels, fetchSttModels])
-
-  // Merge shared STT model definitions with backend status data
-  const mergedSttModels: STTModelInfo[] = STT_MODELS.map((def) => {
-    const backendModel = sttModels.find((m) => m.id === def.id)
-    return backendModel || { ...def, status: 'not_downloaded' as const }
-  })
 
   // Poll TTS model status every 3 seconds while any model is downloading
   useEffect(() => {
@@ -204,7 +196,7 @@ export default function ModelsPage() {
             use more memory.
           </p>
           <div className="space-y-3">
-            {mergedSttModels.map((m) => {
+            {sttModels.map((m) => {
               const isDownloading = downloadingStt === m.id
 
               return (

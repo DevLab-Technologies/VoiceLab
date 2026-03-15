@@ -20,29 +20,34 @@ from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor  # type: ignor
 
 logger = logging.getLogger(__name__)
 
-# Supported Whisper models (id -> display metadata)
+# Supported Whisper models (id -> display metadata).
+# This is the single source of truth — the frontend fetches from /stt/models.
 WHISPER_MODELS = [
     {
         "id": "openai/whisper-tiny",
         "name": "Whisper Tiny",
+        "label": "Tiny (~150 MB)",
         "size_mb": 150,
         "description": "Very fast, basic quality — good for quick drafts or limited RAM",
     },
     {
         "id": "openai/whisper-base",
         "name": "Whisper Base",
+        "label": "Base (~290 MB)",
         "size_mb": 290,
         "description": "Fast with good quality — recommended for low-resource machines",
     },
     {
         "id": "openai/whisper-small",
         "name": "Whisper Small",
+        "label": "Small (~960 MB)",
         "size_mb": 960,
         "description": "Balanced speed and quality",
     },
     {
         "id": "openai/whisper-large-v3-turbo",
         "name": "Whisper Large V3 Turbo",
+        "label": "Large V3 Turbo (~1.5 GB)",
         "size_mb": 1500,
         "description": "Best accuracy, requires more memory",
     },
@@ -122,6 +127,11 @@ class STTEngine:
             if self._current_model == model_id and self._model is not None:
                 return  # already loaded
             if self._loading:
+                logger.warning(
+                    "STTEngine: load(%s) called while already loading %s — skipping",
+                    model_id,
+                    self._current_model or "unknown",
+                )
                 return
 
             # Unload any existing model

@@ -32,7 +32,7 @@ async def transcribe_audio(
     audio: UploadFile = File(...),
     language: Optional[str] = Form(default=None),
     model: Optional[str] = Form(default=None),
-    save: Optional[str] = Form(default="false"),
+    save: bool = Form(default=False),
 ):
     """
     Transcribe an uploaded audio file to text using Whisper.
@@ -47,8 +47,8 @@ async def transcribe_audio(
     model : str, optional
         Whisper model ID to use (e.g., "openai/whisper-tiny"). If omitted,
         uses the currently loaded model or the default.
-    save : str, optional
-        "true" to persist the transcription to history. Defaults to "false".
+    save : bool
+        True to persist the transcription to history. Defaults to False.
 
     Returns
     -------
@@ -56,7 +56,6 @@ async def transcribe_audio(
     When save=true: full transcription record with id, text, model, duration,
                     elapsed_seconds, created_at.
     """
-    should_save = save.lower() in ("true", "1", "yes")
 
     # Save uploaded file to a temp location
     suffix = Path(audio.filename or "audio.wav").suffix or ".wav"
@@ -84,7 +83,7 @@ async def transcribe_audio(
         logger.error("STT transcription failed: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Transcription failed: {exc}")
 
-    if not should_save:
+    if not save:
         # Clean up temp file and return simple result
         try:
             Path(tmp_path).unlink(missing_ok=True)

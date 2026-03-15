@@ -10,12 +10,13 @@ import { useAppStore } from '../store'
 import { DIALECT_MAP, MODEL_INFO, LANGUAGE_MAP } from '../lib/constants'
 import { truncateText, formatDate, formatElapsed } from '../lib/utils'
 import { getGenerationAudioUrl, getTranscriptionAudioUrl } from '../api/audio'
-import { STT_MODEL_NAMES } from '../lib/stt-models'
+import { sttModelName } from '../lib/stt-models'
 
 export default function HistoryPage() {
   const {
     generations, fetchGenerations, deleteGeneration, prepareRegeneration,
     transcriptions, fetchTranscriptions, deleteTranscription,
+    sttModels,
     devMode, profiles, backendReady, addToast, appVersion
   } = useAppStore()
   const navigate = useNavigate()
@@ -299,7 +300,7 @@ export default function HistoryPage() {
                   )}
                   <div className="flex items-center gap-2 mt-2 flex-wrap">
                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-300 text-gray-400">
-                      {STT_MODEL_NAMES[trans.model] || trans.model}
+                      {sttModelName(sttModels, trans.model)}
                     </span>
                     {trans.elapsed_seconds ? (
                       <span className="flex items-center gap-0.5 text-[10px] text-gray-600">

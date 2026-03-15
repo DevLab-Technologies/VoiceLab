@@ -2,6 +2,7 @@ import json
 import uuid
 import shutil
 import logging
+import threading
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Optional, List
@@ -17,6 +18,7 @@ logger = logging.getLogger(__name__)
 class ProfileStore:
     def __init__(self):
         self._data = {"profiles": [], "generations": [], "transcriptions": []}
+        self._lock = threading.Lock()
         self._load()
         # Migrate: ensure transcriptions key exists for older data files
         if "transcriptions" not in self._data:
@@ -24,15 +26,21 @@ class ProfileStore:
             self._save()
 
     def _load(self):
-        if DB_FILE.exists():
-            with open(DB_FILE, "r", encoding="utf-8") as f:
-                self._data = json.load(f)
-        else:
-            self._save()
+        with self._lock:
+            if DB_FILE.exists():
+                with open(DB_FILE, "r", encoding="utf-8") as f:
+                    self._data = json.load(f)
+            else:
+                self._save_unlocked()
 
-    def _save(self):
+    def _save_unlocked(self):
+        """Write data to disk. Caller must hold ``_lock``."""
         with open(DB_FILE, "w", encoding="utf-8") as f:
             json.dump(self._data, f, ensure_ascii=False, indent=2)
+
+    def _save(self):
+        with self._lock:
+            self._save_unlocked()
 
     def list_all(self) -> List[dict]:
         return sorted(self._data["profiles"], key=lambda p: p["created_at"], reverse=True)

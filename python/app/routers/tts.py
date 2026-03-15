@@ -42,8 +42,6 @@ async def generate_speech(request: GenerateRequest):
     3. Wait until the engine is ready (polling in a background thread).
     4. Run inference and persist the generation record.
     """
-    global _cancelled
-
     _cancelled.clear()
 
     profile = profile_store.get(request.profile_id)

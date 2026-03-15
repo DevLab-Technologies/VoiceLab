@@ -7,7 +7,6 @@ import Header from '../components/layout/Header'
 import AudioRecorder from '../components/audio/AudioRecorder'
 import AudioImporter from '../components/audio/AudioImporter'
 import { useAppStore } from '../store'
-import { STT_MODELS } from '../lib/stt-models'
 
 export default function STTPage() {
   const navigate = useNavigate()
@@ -15,8 +14,8 @@ export default function STTPage() {
     addToast,
     sttModel, setSttModel,
     sttModels, fetchSttModels,
-    sttTranscribing, sttResult,
-    sttAudioBlob, sttAudioSource,
+    sttTranscribing, sttResult, setSttResult,
+    sttAudioBlob, sttAudioSource, setSttAudioSource,
     setSttAudioBlob, transcribe, stopTranscription, clearSttSession
   } = useAppStore()
 
@@ -26,7 +25,7 @@ export default function STTPage() {
     fetchSttModels()
   }, [fetchSttModels])
 
-  const isModelDownloaded = (modelId: string) => {
+  const isSttModelReady = (modelId: string) => {
     const model = sttModels.find((m) => m.id === modelId)
     return model ? model.status === 'downloaded' || model.status === 'loaded' : false
   }
@@ -68,8 +67,8 @@ export default function STTPage() {
             Whisper Model
           </label>
           <div className="grid grid-cols-2 gap-2">
-            {STT_MODELS.map((m) => {
-              const downloaded = isModelDownloaded(m.id)
+            {sttModels.map((m) => {
+              const downloaded = m.status === 'downloaded' || m.status === 'loaded'
               const selected = sttModel === m.id
 
               return (
@@ -110,7 +109,7 @@ export default function STTPage() {
 
           <div className="flex gap-1 bg-surface-200 p-1 rounded-lg mb-4 w-fit">
             <button
-              onClick={() => useAppStore.setState({ sttAudioSource: 'record' })}
+              onClick={() => setSttAudioSource('record')}
               className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
                 sttAudioSource === 'record' ? 'bg-accent text-white' : 'text-gray-400 hover:text-white'
               }`}
@@ -118,7 +117,7 @@ export default function STTPage() {
               Record
             </button>
             <button
-              onClick={() => useAppStore.setState({ sttAudioSource: 'import' })}
+              onClick={() => setSttAudioSource('import')}
               className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
                 sttAudioSource === 'import' ? 'bg-accent text-white' : 'text-gray-400 hover:text-white'
               }`}
@@ -146,7 +145,7 @@ export default function STTPage() {
         ) : (
           <button
             onClick={transcribe}
-            disabled={!sttAudioBlob || !isModelDownloaded(sttModel)}
+            disabled={!sttAudioBlob || !isSttModelReady(sttModel)}
             className="btn-primary w-full flex items-center justify-center gap-2 py-3 text-base"
           >
             <AudioLines className="w-5 h-5" />
@@ -203,7 +202,7 @@ export default function STTPage() {
             </div>
             <textarea
               value={sttResult}
-              onChange={(e) => useAppStore.setState({ sttResult: e.target.value })}
+              onChange={(e) => setSttResult(e.target.value)}
               rows={6}
               dir="auto"
               className="input-field text-base leading-relaxed resize-none"
