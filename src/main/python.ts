@@ -89,6 +89,15 @@ async function ensureVenv(pythonDir: string): Promise<string> {
     ? join(venvDir, 'Scripts', 'python.exe')
     : join(venvDir, 'bin', 'python3')
 
+  // Verify uv is available
+  try {
+    await execFileAsync('uv', ['--version'])
+  } catch {
+    throw new Error(
+      'uv is required for dev setup but was not found. Install it: https://docs.astral.sh/uv/getting-started/installation/'
+    )
+  }
+
   if (!existsSync(venvPython)) {
     console.log('Creating Python virtual environment...')
     await execFileAsync('uv', ['venv', venvDir], { cwd: pythonDir })

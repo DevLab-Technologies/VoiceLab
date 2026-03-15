@@ -32,6 +32,9 @@ export default function NewProfilePage() {
     fetchModels()
   }, [])
 
+  const audioFilename =
+    audioSource === 'youtube' ? 'youtube.wav' : audioSource === 'import' ? 'imported.wav' : 'recording.webm'
+
   const canSave = name.trim() && refText.trim() && audioBlob && !saving
 
   const handleSave = async () => {
@@ -84,9 +87,6 @@ export default function NewProfilePage() {
       setTranscribing(false)
     }
   }
-
-  const audioFilename =
-    audioSource === 'youtube' ? 'youtube.wav' : audioSource === 'import' ? 'imported.wav' : 'recording.webm'
 
   const isRTL = model === 'habibi-tts'
 

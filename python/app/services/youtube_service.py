@@ -12,7 +12,7 @@ from app.config import YOUTUBE_TEMP_DIR, MAX_YOUTUBE_DURATION_SEC, SAMPLE_RATE
 logger = logging.getLogger(__name__)
 
 YOUTUBE_URL_PATTERN = re.compile(
-    r"^(https?://)?(www\.)?(youtube\.com/(watch\?v=|shorts/)|youtu\.be/)[\w\-]{11}"
+    r"^(https?://)?(www\.)?(youtube\.com/(watch\?v=|shorts/)|youtu\.be/)[\w\-]{11}([&?].*)?$"
 )
 
 
@@ -46,7 +46,8 @@ async def get_video_info(url: str) -> dict:
         stderr = result.stderr.strip()
         if "Private video" in stderr or "Sign in" in stderr:
             raise ValueError("Video is private or requires authentication")
-        raise ValueError(f"Failed to fetch video info: {stderr[:200]}")
+        logger.warning("yt-dlp failed: %s", stderr[:300])
+        raise ValueError("Failed to fetch video info")
 
     lines = result.stdout.strip().split("\n")
     if len(lines) < 3:
@@ -91,7 +92,8 @@ async def extract_audio(
         ]
         result = await asyncio.to_thread(_run_yt_dlp, dl_args)
         if result.returncode != 0:
-            raise ValueError(f"Download failed: {result.stderr.strip()[:200]}")
+            logger.warning("yt-dlp download failed: %s", result.stderr.strip()[:300])
+            raise ValueError("Audio download failed")
 
         # Find the downloaded file (yt-dlp may add extension)
         downloaded = None
@@ -110,6 +112,7 @@ async def extract_audio(
             if start_sec is not None:
                 ffmpeg_args.extend(["-t", str(end_sec - start_sec)])
             else:
+                # No start offset: -t acts as duration from beginning
                 ffmpeg_args.extend(["-t", str(end_sec)])
         ffmpeg_args.extend([
             "-ar", str(SAMPLE_RATE),
@@ -122,7 +125,8 @@ async def extract_audio(
             subprocess.run, ffmpeg_args, capture_output=True, text=True, timeout=120
         )
         if ffmpeg_result.returncode != 0:
-            raise ValueError(f"Audio conversion failed: {ffmpeg_result.stderr[:200]}")
+            logger.warning("ffmpeg failed: %s", ffmpeg_result.stderr[:300])
+            raise ValueError("Audio conversion failed")
 
         # Clean up raw file
         if downloaded != output_path and downloaded.exists():

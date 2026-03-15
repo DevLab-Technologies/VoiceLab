@@ -53,10 +53,13 @@ Models are downloaded on-demand from the Settings page. Only one model is loaded
 
 - **Node.js** 18+ and **npm**
 - **Python** 3.10+
-- **SoX** (for audio processing)
-  - macOS: `brew install sox`
-  - Ubuntu/Debian: `sudo apt install sox`
-  - Windows: [Download from SourceForge](http://sox.sourceforge.net/)
+- **uv** — fast Python package manager
+  - macOS/Linux: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+  - Windows: `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`
+- **ffmpeg** (for audio processing)
+  - macOS: `brew install ffmpeg`
+  - Ubuntu/Debian: `sudo apt install ffmpeg`
+  - Windows: [Download from ffmpeg.org](https://ffmpeg.org/download.html)
 
 ### Quick Start
 
@@ -68,14 +71,11 @@ cd VoiceLab
 # Install Node dependencies
 npm install
 
-# Create Python virtual environment and install dependencies
-python3 -m venv python/.venv
-source python/.venv/bin/activate    # On Windows: python\.venv\Scripts\activate
-pip install -r python/requirements.txt
-
-# Start in development mode
+# Start in development mode (auto-creates venv and installs Python deps via uv)
 npm run dev
 ```
+
+The app automatically sets up a Python virtual environment and installs all dependencies on first launch using `uv`. No manual Python setup needed.
 
 On first launch, go to **Settings** to download one or both TTS models.
 
@@ -104,8 +104,8 @@ VoiceLab/
 │       ├── main.py        # FastAPI app setup
 │       ├── config.py      # Configuration and paths
 │       ├── models.py      # Pydantic schemas
-│       ├── routers/       # API endpoints (tts, profiles, models, health)
-│       └── services/      # TTS engines, model manager, profile store
+│       ├── routers/       # API endpoints (tts, profiles, models, youtube, stt, health)
+│       └── services/      # TTS engines, model manager, profile store, STT, YouTube
 ├── scripts/               # Build helper scripts
 ├── resources/             # App icons and entitlements
 └── .github/workflows/     # CI/CD pipeline
@@ -138,6 +138,9 @@ npm run start        # Preview the built app
 | `POST` | `/api/profiles` | Create a new voice profile |
 | `POST` | `/api/tts/generate` | Generate speech from text |
 | `GET` | `/api/audio/{id}` | Stream generated audio |
+| `POST` | `/api/youtube/info` | Fetch YouTube video metadata |
+| `POST` | `/api/youtube/extract-audio` | Extract audio from a YouTube video |
+| `POST` | `/api/stt/transcribe` | Transcribe audio to text via Whisper |
 
 ## Building
 

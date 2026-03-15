@@ -1,9 +1,4 @@
-import axios from 'axios'
-import { getBaseURL } from './client'
-
-function getClient() {
-  return axios.create({ baseURL: `${getBaseURL()}/api`, timeout: 30000 })
-}
+import { apiClient } from './client'
 
 export interface VideoInfo {
   title: string
@@ -12,7 +7,7 @@ export interface VideoInfo {
 }
 
 export async function fetchVideoInfo(url: string): Promise<VideoInfo> {
-  const res = await getClient().post('/youtube/info', { url })
+  const res = await apiClient.post('/youtube/info', { url }, { timeout: 30000 })
   return res.data
 }
 
@@ -23,7 +18,7 @@ export async function extractAudio(
   endSec?: number,
   signal?: AbortSignal
 ): Promise<{ audioBlob: Blob; title: string; duration: number }> {
-  const res = await getClient().post(
+  const res = await apiClient.post(
     '/youtube/extract-audio',
     {
       url,
