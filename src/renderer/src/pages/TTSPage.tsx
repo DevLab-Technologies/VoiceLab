@@ -21,6 +21,7 @@ export default function TTSPage() {
     devMode,
     backendReady,
     addToast,
+    appVersion,
     genSpeed,
     genNfeStep,
     genCfgStrength,
@@ -61,7 +62,7 @@ export default function TTSPage() {
         audio_path: currentGeneration.audio_path
       },
       app: {
-        version: '1.0.0',
+        version: appVersion || '1.0.0',
         backend_ready: backendReady,
         platform: navigator.platform
       }

@@ -80,9 +80,6 @@ async def transcribe_audio(
         elapsed = time.time() - start_time
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    except RuntimeError as exc:
-        logger.error("STT transcription failed: %s", exc, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Transcription failed: {exc}")
     except Exception as exc:
         logger.error("STT transcription failed: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Transcription failed: {exc}")
@@ -115,21 +112,15 @@ async def transcribe_audio(
         except Exception:
             duration = 0.0
 
-        # Persist to data.json
+        # Persist to data.json with the pre-generated id
         record = profile_store.add_transcription(
             text=text,
             model=stt_engine.current_model or (model or "unknown"),
             audio_path=str(dest_audio),
             duration=round(duration, 2),
             elapsed_seconds=elapsed,
+            transcription_id=transcription_id,
         )
-        # Update the id to match the directory we created
-        for t in profile_store._data.get("transcriptions", []):
-            if t["id"] == record["id"]:
-                t["id"] = transcription_id
-                break
-        record["id"] = transcription_id
-        profile_store._save()
 
         return record
     except Exception as exc:

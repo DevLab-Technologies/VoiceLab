@@ -1,10 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
 import { MessageSquareText, Users, Clock, AudioLines, Settings, Volume2, Boxes, RefreshCw, Loader2, CheckCircle, ArrowDownToLine } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { useAppStore } from '../../store'
-
-type UpdateStatus = 'idle' | 'checking' | 'available' | 'up-to-date' | 'downloading' | 'downloaded' | 'error'
 
 const navItems = [
   { to: '/', icon: MessageSquareText, label: 'Generate' },
@@ -16,43 +14,15 @@ const navItems = [
 ]
 
 export default function Sidebar() {
-  const { backendReady } = useAppStore()
-  const [appVersion, setAppVersion] = useState('')
-  const [updateStatus, setUpdateStatus] = useState<UpdateStatus>('idle')
-  const [updateVersion, setUpdateVersion] = useState('')
-  const [updateProgress, setUpdateProgress] = useState(0)
+  const {
+    backendReady,
+    appVersion, updateStatus, updateVersion, updateProgress,
+    initUpdateListener, checkForUpdates, downloadUpdate, installUpdate
+  } = useAppStore()
 
   useEffect(() => {
-    window.api.getAppVersion().then((v) => setAppVersion(v))
-
-    const cleanup = window.api.onUpdateStatus((data) => {
-      setUpdateStatus(data.status)
-      if (data.version) setUpdateVersion(data.version)
-      if (data.percent !== undefined) setUpdateProgress(data.percent)
-    })
-
-    return cleanup
-  }, [])
-
-  const handleCheckForUpdates = async () => {
-    setUpdateStatus('checking')
-    const result = await window.api.checkForUpdates()
-    if (!result.success) {
-      setUpdateStatus('error')
-    }
-  }
-
-  const handleDownloadUpdate = async () => {
-    setUpdateProgress(0)
-    const result = await window.api.downloadUpdate()
-    if (!result.success) {
-      setUpdateStatus('error')
-    }
-  }
-
-  const handleInstallUpdate = () => {
-    window.api.installUpdate()
-  }
+    return initUpdateListener()
+  }, [initUpdateListener])
 
   return (
     <aside className="w-[220px] h-screen flex flex-col bg-surface border-r border-white/5 shrink-0">
@@ -105,7 +75,7 @@ export default function Sidebar() {
           <div>
             {updateStatus === 'idle' && (
               <button
-                onClick={handleCheckForUpdates}
+                onClick={checkForUpdates}
                 className="text-[10px] text-gray-500 hover:text-accent transition-colors flex items-center gap-1"
                 title="Check for updates"
               >
@@ -120,7 +90,7 @@ export default function Sidebar() {
             )}
             {updateStatus === 'available' && (
               <button
-                onClick={handleDownloadUpdate}
+                onClick={downloadUpdate}
                 className="text-[10px] text-accent hover:text-accent/80 transition-colors flex items-center gap-1"
                 title={`Download v${updateVersion}`}
               >
@@ -136,7 +106,7 @@ export default function Sidebar() {
             )}
             {updateStatus === 'downloaded' && (
               <button
-                onClick={handleInstallUpdate}
+                onClick={installUpdate}
                 className="text-[10px] text-success hover:text-success/80 transition-colors"
               >
                 Install
@@ -144,7 +114,7 @@ export default function Sidebar() {
             )}
             {updateStatus === 'error' && (
               <button
-                onClick={handleCheckForUpdates}
+                onClick={checkForUpdates}
                 className="text-[10px] text-danger hover:text-danger/80 transition-colors"
                 title="Retry"
               >

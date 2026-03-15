@@ -13,6 +13,7 @@ import {
 import Header from '../components/layout/Header'
 import { useAppStore } from '../store'
 import { MODEL_INFO } from '../lib/constants'
+import { STT_MODELS } from '../lib/stt-models'
 import type { ModelId } from '../types/model'
 import type { STTModelInfo } from '../api/stt'
 
@@ -20,14 +21,6 @@ const MODEL_ICONS: Record<ModelId, typeof Globe> = {
   'habibi-tts': Languages,
   'qwen3-tts': Globe
 }
-
-// Static STT model list — used as fallback when backend hasn't responded yet
-const STT_MODELS_STATIC: STTModelInfo[] = [
-  { id: 'openai/whisper-tiny', name: 'Whisper Tiny', size_mb: 150, description: 'Very fast, basic quality — good for quick drafts or limited RAM', status: 'not_downloaded' },
-  { id: 'openai/whisper-base', name: 'Whisper Base', size_mb: 290, description: 'Fast with good quality — recommended for low-resource machines', status: 'not_downloaded' },
-  { id: 'openai/whisper-small', name: 'Whisper Small', size_mb: 960, description: 'Balanced speed and quality', status: 'not_downloaded' },
-  { id: 'openai/whisper-large-v3-turbo', name: 'Whisper Large V3 Turbo', size_mb: 1500, description: 'Best accuracy, requires more memory', status: 'not_downloaded' }
-]
 
 export default function ModelsPage() {
   const {
@@ -49,10 +42,10 @@ export default function ModelsPage() {
     fetchSttModels()
   }, [fetchModels, fetchSttModels])
 
-  // Merge static STT model list with backend status data
-  const mergedSttModels: STTModelInfo[] = STT_MODELS_STATIC.map((staticModel) => {
-    const backendModel = sttModels.find((m) => m.id === staticModel.id)
-    return backendModel || staticModel
+  // Merge shared STT model definitions with backend status data
+  const mergedSttModels: STTModelInfo[] = STT_MODELS.map((def) => {
+    const backendModel = sttModels.find((m) => m.id === def.id)
+    return backendModel || { ...def, status: 'not_downloaded' as const }
   })
 
   // Poll TTS model status every 3 seconds while any model is downloading

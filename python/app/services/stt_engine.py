@@ -193,10 +193,17 @@ class STTEngine:
         if self._model is None or self._current_model != target_model:
             self.load(target_model)
 
-        if self._model is None or self._processor is None:
-            raise RuntimeError("STT model failed to load. Check logs for details.")
-
         logger.info("STTEngine: transcribing %s (model=%s, language=%s)", audio_path, self._current_model, language)
+
+        # Snapshot references under lock so inference is thread-safe
+        with self._lock:
+            model = self._model
+            processor = self._processor
+            device = self._device
+            dtype = self._dtype
+
+        if model is None or processor is None:
+            raise RuntimeError("STT model failed to load. Check logs for details.")
 
         # Load audio with librosa (avoids torchcodec/FFmpeg issues)
         audio_array, _ = librosa.load(audio_path, sr=WHISPER_SAMPLE_RATE, mono=True)
@@ -210,12 +217,12 @@ class STTEngine:
             chunk = audio_array[start : start + chunk_samples]
 
             # Prepare input features
-            inputs = self._processor(
+            inputs = processor(
                 chunk,
                 sampling_rate=WHISPER_SAMPLE_RATE,
                 return_tensors="pt",
             )
-            input_features = inputs.input_features.to(self._device, dtype=self._dtype)
+            input_features = inputs.input_features.to(device, dtype=dtype)
 
             # Build generate kwargs
             gen_kwargs = {}
@@ -225,13 +232,13 @@ class STTEngine:
 
             # Generate token ids
             with torch.no_grad():
-                predicted_ids = self._model.generate(
+                predicted_ids = model.generate(
                     input_features,
                     **gen_kwargs,
                 )
 
             # Decode tokens to text
-            text = self._processor.batch_decode(predicted_ids, skip_special_tokens=True)
+            text = processor.batch_decode(predicted_ids, skip_special_tokens=True)
             all_text_parts.extend(text)
 
         result = " ".join(part.strip() for part in all_text_parts if part.strip())
@@ -241,12 +248,15 @@ class STTEngine:
     def unload(self) -> None:
         """Release the model from memory."""
         with self._lock:
+            was_cuda = self._device == "cuda"
             self._model = None
             self._processor = None
             self._current_model = None
             self._device = None
             self._loading = False
             self._error = None
+        if was_cuda:
+            torch.cuda.empty_cache()
         logger.info("STTEngine: unloaded.")
 
     # ------------------------------------------------------------------

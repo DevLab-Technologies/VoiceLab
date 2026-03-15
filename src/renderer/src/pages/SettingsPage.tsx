@@ -5,8 +5,7 @@ import { FolderOpen, Trash2, Bug, AudioLines, Download, RefreshCw, Loader2, Chec
 import Header from '../components/layout/Header'
 import Dialog from '../components/ui/Dialog'
 import { useAppStore } from '../store'
-
-type UpdateStatus = 'idle' | 'checking' | 'available' | 'up-to-date' | 'downloading' | 'downloaded' | 'error'
+import { STT_MODELS } from '../lib/stt-models'
 
 export default function SettingsPage() {
   const navigate = useNavigate()
@@ -18,30 +17,23 @@ export default function SettingsPage() {
     sttModels,
     fetchSttModels,
     devMode,
-    setDevMode
+    setDevMode,
+    appVersion,
+    updateStatus,
+    updateVersion,
+    updateProgress,
+    updateError,
+    checkForUpdates,
+    downloadUpdate,
+    installUpdate
   } = useAppStore()
 
   const [dataPath, setDataPath] = useState('')
-  const [appVersion, setAppVersion] = useState('1.0.0')
   const [showClear, setShowClear] = useState(false)
-  const [updateStatus, setUpdateStatus] = useState<UpdateStatus>('idle')
-  const [updateVersion, setUpdateVersion] = useState('')
-  const [updateProgress, setUpdateProgress] = useState(0)
-  const [updateError, setUpdateError] = useState('')
 
   useEffect(() => {
     window.api.getUserDataPath().then((p) => setDataPath(p))
-    window.api.getAppVersion().then((v) => setAppVersion(v))
     fetchSttModels()
-
-    const cleanup = window.api.onUpdateStatus((data) => {
-      setUpdateStatus(data.status)
-      if (data.version) setUpdateVersion(data.version)
-      if (data.percent !== undefined) setUpdateProgress(data.percent)
-      if (data.message) setUpdateError(data.message)
-    })
-
-    return cleanup
   }, [fetchSttModels])
 
   const isModelDownloaded = (modelId: string) => {
@@ -52,29 +44,6 @@ export default function SettingsPage() {
   const handleClearData = () => {
     addToast('Cache cleared', 'success')
     setShowClear(false)
-  }
-
-  const handleCheckForUpdates = async () => {
-    setUpdateStatus('checking')
-    setUpdateError('')
-    const result = await window.api.checkForUpdates()
-    if (!result.success) {
-      setUpdateStatus('error')
-      setUpdateError(result.error || 'Failed to check for updates')
-    }
-  }
-
-  const handleDownloadUpdate = async () => {
-    setUpdateProgress(0)
-    const result = await window.api.downloadUpdate()
-    if (!result.success) {
-      setUpdateStatus('error')
-      setUpdateError(result.error || 'Download failed')
-    }
-  }
-
-  const handleInstallUpdate = () => {
-    window.api.installUpdate()
   }
 
   return (
@@ -113,7 +82,7 @@ export default function SettingsPage() {
             <div className="flex items-center gap-2">
               {updateStatus === 'idle' && (
                 <button
-                  onClick={handleCheckForUpdates}
+                  onClick={checkForUpdates}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-accent/10 text-accent text-xs font-medium rounded-lg hover:bg-accent/20 transition-colors"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
@@ -134,7 +103,7 @@ export default function SettingsPage() {
               )}
               {updateStatus === 'available' && (
                 <button
-                  onClick={handleDownloadUpdate}
+                  onClick={downloadUpdate}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-accent/10 text-accent text-xs font-medium rounded-lg hover:bg-accent/20 transition-colors"
                 >
                   <ArrowDownToLine className="w-3.5 h-3.5" />
@@ -149,7 +118,7 @@ export default function SettingsPage() {
               )}
               {updateStatus === 'downloaded' && (
                 <button
-                  onClick={handleInstallUpdate}
+                  onClick={installUpdate}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-success/10 text-success text-xs font-medium rounded-lg hover:bg-success/20 transition-colors"
                 >
                   <ArrowDownToLine className="w-3.5 h-3.5" />
@@ -160,7 +129,7 @@ export default function SettingsPage() {
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-danger truncate max-w-[180px]">{updateError}</span>
                   <button
-                    onClick={handleCheckForUpdates}
+                    onClick={checkForUpdates}
                     className="flex items-center gap-1 px-2 py-1 text-xs text-accent hover:text-accent/80 transition-colors"
                   >
                     Retry
@@ -181,12 +150,7 @@ export default function SettingsPage() {
             Select the Whisper model used for transcription. Download models from the Models page.
           </p>
           <div className="space-y-2">
-            {[
-              { id: 'openai/whisper-tiny', name: 'Tiny', size: '~150 MB', desc: 'Very fast, basic quality' },
-              { id: 'openai/whisper-base', name: 'Base', size: '~290 MB', desc: 'Fast, good quality' },
-              { id: 'openai/whisper-small', name: 'Small', size: '~960 MB', desc: 'Balanced speed & quality' },
-              { id: 'openai/whisper-large-v3-turbo', name: 'Large V3 Turbo', size: '~1.5 GB', desc: 'Best accuracy' }
-            ].map((m) => {
+            {STT_MODELS.map((m) => {
               const downloaded = isModelDownloaded(m.id)
               const selected = sttModel === m.id
 
@@ -210,7 +174,7 @@ export default function SettingsPage() {
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-gray-300">{m.name}</span>
+                    <span className="text-sm font-medium text-gray-300">{m.label}</span>
                     {!downloaded ? (
                       <Download className="w-3 h-3 text-gray-500" />
                     ) : (
@@ -218,7 +182,7 @@ export default function SettingsPage() {
                     )}
                   </div>
                   <p className="text-[10px] text-gray-500 mt-0.5">
-                    {!downloaded ? 'Not downloaded' : m.desc}
+                    {!downloaded ? 'Not downloaded' : m.description}
                   </p>
                 </button>
               )

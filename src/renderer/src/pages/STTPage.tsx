@@ -7,13 +7,7 @@ import Header from '../components/layout/Header'
 import AudioRecorder from '../components/audio/AudioRecorder'
 import AudioImporter from '../components/audio/AudioImporter'
 import { useAppStore } from '../store'
-
-const STT_MODELS = [
-  { id: 'openai/whisper-tiny', label: 'Tiny (~150 MB)', description: 'Very fast, basic quality' },
-  { id: 'openai/whisper-base', label: 'Base (~290 MB)', description: 'Fast, good quality' },
-  { id: 'openai/whisper-small', label: 'Small (~960 MB)', description: 'Balanced speed & quality' },
-  { id: 'openai/whisper-large-v3-turbo', label: 'Large V3 Turbo (~1.5 GB)', description: 'Best accuracy' }
-]
+import { STT_MODELS } from '../lib/stt-models'
 
 export default function STTPage() {
   const navigate = useNavigate()

@@ -6,6 +6,7 @@ HabibiEngine   — HabibiTTS-backed engine (Arabic dialects via F5-TTS).
 """
 
 import abc
+import os
 import re
 import uuid
 import logging
@@ -335,7 +336,6 @@ class HabibiEngine(BaseTTSEngine):
         finally:
             # Clean up temporary trimmed audio file
             if tmp_ref_audio_file is not None:
-                import os
                 try:
                     os.unlink(tmp_ref_audio_file.name)
                 except OSError:

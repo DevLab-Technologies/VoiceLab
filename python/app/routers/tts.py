@@ -24,8 +24,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["tts"])
 
-# Module-level state for cancellation
-_current_generation_task: asyncio.Task | None = None
+# Module-level cancellation flag.
+# Single-user desktop app — only one generation runs at a time.
 _cancelled = threading.Event()
 
 
@@ -42,7 +42,7 @@ async def generate_speech(request: GenerateRequest):
     3. Wait until the engine is ready (polling in a background thread).
     4. Run inference and persist the generation record.
     """
-    global _current_generation_task, _cancelled
+    global _cancelled
 
     _cancelled.clear()
 

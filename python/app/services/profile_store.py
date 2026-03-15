@@ -221,8 +221,9 @@ class ProfileStore:
         audio_path: str,
         duration: float,
         elapsed_seconds: float = 0.0,
+        transcription_id: Optional[str] = None,
     ) -> dict:
-        transcription_id = str(uuid.uuid4())
+        transcription_id = transcription_id or str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
 
         transcription = {

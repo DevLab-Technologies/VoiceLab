@@ -10,19 +10,13 @@ import { useAppStore } from '../store'
 import { DIALECT_MAP, MODEL_INFO, LANGUAGE_MAP } from '../lib/constants'
 import { truncateText, formatDate, formatElapsed } from '../lib/utils'
 import { getGenerationAudioUrl, getTranscriptionAudioUrl } from '../api/audio'
-
-const WHISPER_MODEL_NAMES: Record<string, string> = {
-  'openai/whisper-tiny': 'Whisper Tiny',
-  'openai/whisper-base': 'Whisper Base',
-  'openai/whisper-small': 'Whisper Small',
-  'openai/whisper-large-v3-turbo': 'Whisper Large V3 Turbo'
-}
+import { STT_MODEL_NAMES } from '../lib/stt-models'
 
 export default function HistoryPage() {
   const {
     generations, fetchGenerations, deleteGeneration, prepareRegeneration,
     transcriptions, fetchTranscriptions, deleteTranscription,
-    devMode, profiles, backendReady, addToast
+    devMode, profiles, backendReady, addToast, appVersion
   } = useAppStore()
   const navigate = useNavigate()
   const [loading, setLoading] = useState(true)
@@ -77,7 +71,7 @@ export default function HistoryPage() {
         language: gen.language || null
       },
       app: {
-        version: '1.0.0',
+        version: appVersion || '1.0.0',
         backend_ready: backendReady,
         platform: navigator.platform
       },
@@ -305,7 +299,7 @@ export default function HistoryPage() {
                   )}
                   <div className="flex items-center gap-2 mt-2 flex-wrap">
                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-300 text-gray-400">
-                      {WHISPER_MODEL_NAMES[trans.model] || trans.model}
+                      {STT_MODEL_NAMES[trans.model] || trans.model}
                     </span>
                     {trans.elapsed_seconds ? (
                       <span className="flex items-center gap-0.5 text-[10px] text-gray-600">

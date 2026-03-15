@@ -17,6 +17,8 @@ interface Toast {
   type: 'success' | 'error' | 'info'
 }
 
+type UpdateStatus = 'idle' | 'checking' | 'available' | 'up-to-date' | 'downloading' | 'downloaded' | 'error'
+
 interface AppState {
   // Backend
   backendReady: boolean
@@ -97,6 +99,17 @@ interface AppState {
   transcriptions: Transcription[]
   fetchTranscriptions: () => Promise<void>
   deleteTranscription: (id: string) => Promise<void>
+
+  // App version & updates
+  appVersion: string
+  updateStatus: UpdateStatus
+  updateVersion: string
+  updateProgress: number
+  updateError: string
+  initUpdateListener: () => () => void
+  checkForUpdates: () => Promise<void>
+  downloadUpdate: () => Promise<void>
+  installUpdate: () => void
 
   // Developer
   devMode: boolean
@@ -525,6 +538,40 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch (err: any) {
       get().addToast(err?.response?.data?.detail || 'Failed to delete transcription', 'error')
     }
+  },
+
+  // App version & updates
+  appVersion: '',
+  updateStatus: 'idle' as UpdateStatus,
+  updateVersion: '',
+  updateProgress: 0,
+  updateError: '',
+  initUpdateListener: () => {
+    window.api.getAppVersion().then((v) => set({ appVersion: v }))
+    const cleanup = window.api.onUpdateStatus((data) => {
+      set({ updateStatus: data.status })
+      if (data.version) set({ updateVersion: data.version })
+      if (data.percent !== undefined) set({ updateProgress: data.percent })
+      if (data.message) set({ updateError: data.message })
+    })
+    return cleanup
+  },
+  checkForUpdates: async () => {
+    set({ updateStatus: 'checking', updateError: '' })
+    const result = await window.api.checkForUpdates()
+    if (!result.success) {
+      set({ updateStatus: 'error', updateError: result.error || 'Failed to check for updates' })
+    }
+  },
+  downloadUpdate: async () => {
+    set({ updateProgress: 0 })
+    const result = await window.api.downloadUpdate()
+    if (!result.success) {
+      set({ updateStatus: 'error', updateError: result.error || 'Download failed' })
+    }
+  },
+  installUpdate: () => {
+    window.api.installUpdate()
   },
 
   // Developer
