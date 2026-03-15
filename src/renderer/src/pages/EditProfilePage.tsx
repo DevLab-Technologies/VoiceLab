@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ArrowLeft, Save, Loader2 } from 'lucide-react'
 import Header from '../components/layout/Header'
+import ModelSelector from '../components/profiles/ModelSelector'
 import DialectSelector from '../components/profiles/DialectSelector'
 import LanguageSelector from '../components/profiles/LanguageSelector'
 import AudioPlayer from '../components/audio/AudioPlayer'
@@ -10,15 +11,16 @@ import Spinner from '../components/ui/Spinner'
 import { useAppStore } from '../store'
 import { updateProfile } from '../api/profiles'
 import { getProfileAudioUrl } from '../api/audio'
-import { MODEL_INFO } from '../lib/constants'
 import type { DialectCode } from '../types/dialect'
+import type { ModelId } from '../types/model'
 
 export default function EditProfilePage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { profiles, fetchProfiles, addToast } = useAppStore()
+  const { profiles, fetchProfiles, addToast, availableModels, fetchModels } = useAppStore()
 
   const [name, setName] = useState('')
+  const [model, setModel] = useState<ModelId>('habibi-tts')
   const [dialect, setDialect] = useState<DialectCode>('MSA')
   const [language, setLanguage] = useState('English')
   const [refText, setRefText] = useState('')
@@ -26,18 +28,17 @@ export default function EditProfilePage() {
   const [loading, setLoading] = useState(true)
 
   const profile = profiles.find((p) => p.id === id)
-  const modelId = profile?.model || 'habibi-tts'
-  const isHabibi = modelId === 'habibi-tts'
+  const isHabibi = model === 'habibi-tts'
 
   useEffect(() => {
-    if (profiles.length === 0) {
-      fetchProfiles()
-    }
+    if (profiles.length === 0) fetchProfiles()
+    fetchModels()
   }, [])
 
   useEffect(() => {
     if (profile) {
       setName(profile.name)
+      setModel((profile.model || 'habibi-tts') as ModelId)
       if (profile.dialect) setDialect(profile.dialect)
       if (profile.language) setLanguage(profile.language)
       setRefText(profile.ref_text)
@@ -51,6 +52,7 @@ export default function EditProfilePage() {
     try {
       await updateProfile(id, {
         name,
+        model,
         ...(isHabibi ? { dialect } : {}),
         ...(!isHabibi ? { language } : {}),
         ref_text: refText
@@ -100,13 +102,12 @@ export default function EditProfilePage() {
           />
         </div>
 
-        {/* Show model badge (read-only) */}
-        <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">TTS Model</label>
-          <p className="text-sm text-gray-400 bg-surface-200 px-4 py-2.5 rounded-xl">
-            {MODEL_INFO[modelId]?.name || modelId}
-          </p>
-        </div>
+        {/* Model Selector */}
+        <ModelSelector
+          value={model}
+          onChange={setModel}
+          availableModels={availableModels}
+        />
 
         {/* Dialect or Language */}
         {isHabibi ? (

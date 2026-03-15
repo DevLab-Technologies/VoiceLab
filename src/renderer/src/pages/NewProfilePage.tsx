@@ -8,6 +8,7 @@ import DialectSelector from '../components/profiles/DialectSelector'
 import LanguageSelector from '../components/profiles/LanguageSelector'
 import AudioRecorder from '../components/audio/AudioRecorder'
 import AudioImporter from '../components/audio/AudioImporter'
+import YouTubeImporter from '../components/audio/YouTubeImporter'
 import { useAppStore } from '../store'
 import { transcribeAudio } from '../api/stt'
 import type { DialectCode } from '../types/dialect'
@@ -23,7 +24,7 @@ export default function NewProfilePage() {
   const [language, setLanguage] = useState('English')
   const [refText, setRefText] = useState('')
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null)
-  const [audioSource, setAudioSource] = useState<'record' | 'import'>('record')
+  const [audioSource, setAudioSource] = useState<'record' | 'import' | 'youtube'>('record')
   const [saving, setSaving] = useState(false)
   const [transcribing, setTranscribing] = useState(false)
 
@@ -37,7 +38,7 @@ export default function NewProfilePage() {
     if (!canSave || !audioBlob) return
     setSaving(true)
     try {
-      const filename = audioSource === 'import' ? 'imported.wav' : 'recording.webm'
+      const filename = audioSource === 'youtube' ? 'youtube.wav' : audioSource === 'import' ? 'imported.wav' : 'recording.webm'
       await createProfile(
         name,
         model,
@@ -63,6 +64,11 @@ export default function NewProfilePage() {
   const handleRecorded = (blob: Blob) => {
     setAudioBlob(blob)
     setAudioSource('record')
+  }
+
+  const handleYouTubeExtracted = (blob: Blob) => {
+    setAudioBlob(blob)
+    setAudioSource('youtube')
   }
 
   const handleTranscribe = async () => {
@@ -152,12 +158,26 @@ export default function NewProfilePage() {
             >
               Import
             </button>
+            <button
+              onClick={() => setAudioSource('youtube')}
+              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
+                audioSource === 'youtube' ? 'bg-accent text-white' : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              YouTube
+            </button>
           </div>
 
           {audioSource === 'record' ? (
             <AudioRecorder onRecorded={handleRecorded} />
-          ) : (
+          ) : audioSource === 'import' ? (
             <AudioImporter onImported={handleImport} />
+          ) : (
+            <YouTubeImporter
+              onExtracted={handleYouTubeExtracted}
+              enableTrimming
+              maxDuration={15}
+            />
           )}
         </div>
 

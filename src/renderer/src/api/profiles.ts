@@ -44,7 +44,7 @@ export async function createProfile(
 
 export async function updateProfile(
   id: string,
-  data: { name?: string; dialect?: DialectCode; language?: string; ref_text?: string }
+  data: { name?: string; model?: ModelId; dialect?: DialectCode; language?: string; ref_text?: string }
 ): Promise<Profile> {
   const res = await getClient().put(`/profiles/${id}`, data)
   return res.data

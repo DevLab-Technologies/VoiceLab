@@ -1,4 +1,4 @@
-import { ChildProcess, spawn } from 'child_process'
+import { ChildProcess, spawn, execFileSync } from 'child_process'
 import { createServer } from 'net'
 import { join } from 'path'
 import { app } from 'electron'
@@ -79,10 +79,43 @@ function healthCheck(port: number): Promise<boolean> {
   })
 }
 
+function ensureVenv(pythonDir: string): string {
+  const isWin = process.platform === 'win32'
+  const venvDir = join(pythonDir, '.venv')
+  const venvPython = isWin
+    ? join(venvDir, 'Scripts', 'python.exe')
+    : join(venvDir, 'bin', 'python3')
+
+  if (!existsSync(venvPython)) {
+    console.log('Creating Python virtual environment...')
+    execFileSync('uv', ['venv', venvDir], { cwd: pythonDir, stdio: 'inherit' })
+  }
+
+  // Always sync dependencies to handle missing or new packages
+  console.log('Syncing Python dependencies...')
+  const requirementsFile = join(pythonDir, 'requirements.txt')
+  execFileSync('uv', ['pip', 'install', '-r', requirementsFile, '--python', venvPython], {
+    cwd: pythonDir,
+    stdio: 'inherit',
+    timeout: 600000
+  })
+
+  return venvPython
+}
+
 export async function startPythonBackend(): Promise<number> {
   backendPort = await findFreePort()
   const pythonDir = getPythonDir()
-  const pythonBin = getPythonBin(pythonDir)
+
+  // In dev mode without a bundled runtime, ensure venv + deps are set up
+  const isDev = !app.isPackaged
+  const hasBundledRuntime = existsSync(join(pythonDir, 'python-runtime'))
+  let pythonBin: string
+  if (isDev && !hasBundledRuntime) {
+    pythonBin = ensureVenv(pythonDir)
+  } else {
+    pythonBin = getPythonBin(pythonDir)
+  }
 
   console.log(`Starting Python backend on port ${backendPort}...`)
   console.log(`Python directory: ${pythonDir}`)
