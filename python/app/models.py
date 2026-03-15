@@ -70,6 +70,10 @@ class GenerateRequest(BaseModel):
     dialect: Optional[DialectCode] = None
     # Optional per-request language override (respected by qwen3-tts)
     language: Optional[str] = None
+    # HabibiTTS tuning parameters
+    speed: Optional[float] = Field(default=None, ge=0.5, le=2.0, description="Speed multiplier (0.5-2.0)")
+    nfe_step: Optional[int] = Field(default=None, ge=8, le=64, description="Quality steps (8-64, higher=better)")
+    cfg_strength: Optional[float] = Field(default=None, ge=0.0, le=5.0, description="Text adherence (0-5)")
 
 
 class GenerationResponse(BaseModel):
@@ -80,6 +84,7 @@ class GenerationResponse(BaseModel):
     dialect: Optional[DialectCode] = None
     audio_path: str
     duration: float
+    elapsed_seconds: float = 0.0
     created_at: str
     model: str = "habibi-tts"
     language: Optional[str] = None

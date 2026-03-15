@@ -2,6 +2,7 @@ import json
 import uuid
 import shutil
 import logging
+import threading
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Optional, List
@@ -9,26 +10,45 @@ from typing import Optional, List
 import soundfile as sf
 from pydub import AudioSegment
 
-from app.config import DB_FILE, PROFILES_DIR, GENERATIONS_DIR, SAMPLE_RATE
+from app.config import DB_FILE, PROFILES_DIR, GENERATIONS_DIR, TRANSCRIPTIONS_DIR, SAMPLE_RATE
 
 logger = logging.getLogger(__name__)
 
 
+def _safe_subdir(base: Path, name: str) -> Path:
+    """Resolve *name* as a direct child of *base* and verify it stays inside."""
+    resolved = (base / name).resolve()
+    if not resolved.is_relative_to(base.resolve()):
+        raise ValueError(f"Invalid id: {name!r}")
+    return resolved
+
+
 class ProfileStore:
     def __init__(self):
-        self._data = {"profiles": [], "generations": []}
+        self._data = {"profiles": [], "generations": [], "transcriptions": []}
+        self._lock = threading.Lock()
         self._load()
-
-    def _load(self):
-        if DB_FILE.exists():
-            with open(DB_FILE, "r", encoding="utf-8") as f:
-                self._data = json.load(f)
-        else:
+        # Migrate: ensure transcriptions key exists for older data files
+        if "transcriptions" not in self._data:
+            self._data["transcriptions"] = []
             self._save()
 
-    def _save(self):
+    def _load(self):
+        with self._lock:
+            if DB_FILE.exists():
+                with open(DB_FILE, "r", encoding="utf-8") as f:
+                    self._data = json.load(f)
+            else:
+                self._save_unlocked()
+
+    def _save_unlocked(self):
+        """Write data to disk. Caller must hold ``_lock``."""
         with open(DB_FILE, "w", encoding="utf-8") as f:
             json.dump(self._data, f, ensure_ascii=False, indent=2)
+
+    def _save(self):
+        with self._lock:
+            self._save_unlocked()
 
     def list_all(self) -> List[dict]:
         return sorted(self._data["profiles"], key=lambda p: p["created_at"], reverse=True)
@@ -42,7 +62,7 @@ class ProfileStore:
     async def create(
         self,
         name: str,
-        dialect: str,
+        dialect: str | None,
         ref_text: str,
         audio_data: bytes,
         audio_filename: str,
@@ -113,37 +133,40 @@ class ProfileStore:
             "language": language,
         }
 
-        self._data["profiles"].append(profile)
-        self._save()
+        with self._lock:
+            self._data["profiles"].append(profile)
+            self._save_unlocked()
         return profile
 
     def update(self, profile_id: str, update) -> Optional[dict]:
-        for i, p in enumerate(self._data["profiles"]):
-            if p["id"] == profile_id:
-                update_dict = update.model_dump(exclude_unset=True)
-                for key, value in update_dict.items():
-                    if value is not None:
-                        p[key] = value if not hasattr(value, "value") else value.value
-                p["updated_at"] = datetime.now(timezone.utc).isoformat()
-                self._data["profiles"][i] = p
-                self._save()
-                return p
+        with self._lock:
+            for i, p in enumerate(self._data["profiles"]):
+                if p["id"] == profile_id:
+                    update_dict = update.model_dump(exclude_unset=True)
+                    for key, value in update_dict.items():
+                        if value is not None:
+                            p[key] = value if not hasattr(value, "value") else value.value
+                    p["updated_at"] = datetime.now(timezone.utc).isoformat()
+                    self._data["profiles"][i] = p
+                    self._save_unlocked()
+                    return p
         return None
 
     def delete(self, profile_id: str) -> bool:
-        for i, p in enumerate(self._data["profiles"]):
-            if p["id"] == profile_id:
-                self._data["profiles"].pop(i)
-                # Remove files
-                profile_dir = PROFILES_DIR / profile_id
-                if profile_dir.exists():
-                    shutil.rmtree(profile_dir)
-                # Remove related generations
-                self._data["generations"] = [
-                    g for g in self._data["generations"] if g["profile_id"] != profile_id
-                ]
-                self._save()
-                return True
+        with self._lock:
+            for i, p in enumerate(self._data["profiles"]):
+                if p["id"] == profile_id:
+                    self._data["profiles"].pop(i)
+                    # Remove files (with path traversal guard)
+                    profile_dir = _safe_subdir(PROFILES_DIR, profile_id)
+                    if profile_dir.exists():
+                        shutil.rmtree(profile_dir)
+                    # Remove related generations
+                    self._data["generations"] = [
+                        g for g in self._data["generations"] if g["profile_id"] != profile_id
+                    ]
+                    self._save_unlocked()
+                    return True
         return False
 
     # -- Generations --
@@ -153,28 +176,40 @@ class ProfileStore:
         profile_id: str,
         profile_name: str,
         text: str,
-        dialect: str,
+        dialect: str | None,
         audio_path: str,
         duration: float,
         model: str = "habibi-tts",
         language: str | None = None,
+        elapsed_seconds: float = 0.0,
     ) -> dict:
         gen_id = Path(audio_path).parent.name
         now = datetime.now(timezone.utc).isoformat()
+
+        # dialect can be None for non-Arabic models (e.g. Qwen3-TTS)
+        if dialect is None:
+            dialect_value = None
+        elif isinstance(dialect, str):
+            dialect_value = dialect
+        else:
+            dialect_value = dialect.value
+
         generation = {
             "id": gen_id,
             "profile_id": profile_id,
             "profile_name": profile_name,
             "text": text,
-            "dialect": dialect if isinstance(dialect, str) else dialect.value,
+            "dialect": dialect_value,
             "audio_path": audio_path,
             "duration": duration,
+            "elapsed_seconds": round(elapsed_seconds, 1),
             "created_at": now,
             "model": model,
             "language": language,
         }
-        self._data["generations"].append(generation)
-        self._save()
+        with self._lock:
+            self._data["generations"].append(generation)
+            self._save_unlocked()
         return generation
 
     def list_generations(self) -> List[dict]:
@@ -187,14 +222,69 @@ class ProfileStore:
         return None
 
     def delete_generation(self, generation_id: str) -> bool:
-        for i, g in enumerate(self._data["generations"]):
-            if g["id"] == generation_id:
-                self._data["generations"].pop(i)
-                gen_dir = GENERATIONS_DIR / generation_id
-                if gen_dir.exists():
-                    shutil.rmtree(gen_dir)
-                self._save()
-                return True
+        with self._lock:
+            for i, g in enumerate(self._data["generations"]):
+                if g["id"] == generation_id:
+                    self._data["generations"].pop(i)
+                    gen_dir = _safe_subdir(GENERATIONS_DIR, generation_id)
+                    if gen_dir.exists():
+                        shutil.rmtree(gen_dir)
+                    self._save_unlocked()
+                    return True
+        return False
+
+    # -- Transcriptions --
+
+    def add_transcription(
+        self,
+        text: str,
+        model: str,
+        audio_path: str,
+        duration: float,
+        elapsed_seconds: float = 0.0,
+        transcription_id: Optional[str] = None,
+    ) -> dict:
+        transcription_id = transcription_id or str(uuid.uuid4())
+        now = datetime.now(timezone.utc).isoformat()
+
+        transcription = {
+            "id": transcription_id,
+            "text": text,
+            "model": model,
+            "audio_path": audio_path,
+            "duration": duration,
+            "elapsed_seconds": round(elapsed_seconds, 1),
+            "created_at": now,
+        }
+        with self._lock:
+            self._data["transcriptions"].append(transcription)
+            self._save_unlocked()
+        return transcription
+
+    def list_transcriptions(self) -> List[dict]:
+        return sorted(
+            self._data.get("transcriptions", []),
+            key=lambda t: t["created_at"],
+            reverse=True,
+        )
+
+    def get_transcription(self, transcription_id: str) -> Optional[dict]:
+        for t in self._data.get("transcriptions", []):
+            if t["id"] == transcription_id:
+                return t
+        return None
+
+    def delete_transcription(self, transcription_id: str) -> bool:
+        with self._lock:
+            transcriptions = self._data.get("transcriptions", [])
+            for i, t in enumerate(transcriptions):
+                if t["id"] == transcription_id:
+                    transcriptions.pop(i)
+                    trans_dir = _safe_subdir(TRANSCRIPTIONS_DIR, transcription_id)
+                    if trans_dir.exists():
+                        shutil.rmtree(trans_dir)
+                    self._save_unlocked()
+                    return True
         return False
 
 

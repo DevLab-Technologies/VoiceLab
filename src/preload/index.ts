@@ -7,7 +7,18 @@ const api = {
     ipcRenderer.invoke('show-save-dialog', options),
   showOpenDialog: (options: Electron.OpenDialogOptions): Promise<string[]> =>
     ipcRenderer.invoke('show-open-dialog', options),
-  getUserDataPath: (): Promise<string> => ipcRenderer.invoke('get-user-data-path')
+  getUserDataPath: (): Promise<string> => ipcRenderer.invoke('get-user-data-path'),
+  getAppVersion: (): Promise<string> => ipcRenderer.invoke('get-app-version'),
+  checkForUpdates: (): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('check-for-updates'),
+  downloadUpdate: (): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('download-update'),
+  installUpdate: (): Promise<void> => ipcRenderer.invoke('install-update'),
+  onUpdateStatus: (callback: (data: any) => void): (() => void) => {
+    const handler = (_event: any, data: any): void => callback(data)
+    ipcRenderer.on('update-status', handler)
+    return () => ipcRenderer.removeListener('update-status', handler)
+  }
 }
 
 if (process.contextIsolated) {

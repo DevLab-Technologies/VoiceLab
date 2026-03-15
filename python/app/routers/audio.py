@@ -4,14 +4,22 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
-from app.config import PROFILES_DIR, GENERATIONS_DIR
+from app.config import PROFILES_DIR, GENERATIONS_DIR, TRANSCRIPTIONS_DIR
 
 router = APIRouter(tags=["audio"])
 
 
+def _safe_path(base: Path, *parts: str) -> Path:
+    """Resolve *parts* relative to *base* and verify the result stays inside it."""
+    resolved = (base / Path(*parts)).resolve()
+    if not resolved.is_relative_to(base.resolve()):
+        raise HTTPException(status_code=400, detail="Invalid path")
+    return resolved
+
+
 @router.get("/audio/profiles/{profile_id}/{filename}")
 async def serve_profile_audio(profile_id: str, filename: str):
-    file_path = PROFILES_DIR / profile_id / filename
+    file_path = _safe_path(PROFILES_DIR, profile_id, filename)
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Audio file not found")
     return FileResponse(str(file_path), media_type="audio/wav")
@@ -19,7 +27,15 @@ async def serve_profile_audio(profile_id: str, filename: str):
 
 @router.get("/audio/generations/{generation_id}/{filename}")
 async def serve_generation_audio(generation_id: str, filename: str):
-    file_path = GENERATIONS_DIR / generation_id / filename
+    file_path = _safe_path(GENERATIONS_DIR, generation_id, filename)
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Audio file not found")
+    return FileResponse(str(file_path), media_type="audio/wav")
+
+
+@router.get("/audio/transcriptions/{transcription_id}/{filename}")
+async def serve_transcription_audio(transcription_id: str, filename: str):
+    file_path = _safe_path(TRANSCRIPTIONS_DIR, transcription_id, filename)
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Audio file not found")
     return FileResponse(str(file_path), media_type="audio/wav")
@@ -31,10 +47,12 @@ async def get_waveform(audio_type: str, item_id: str, filename: str):
         base_dir = PROFILES_DIR
     elif audio_type == "generations":
         base_dir = GENERATIONS_DIR
+    elif audio_type == "transcriptions":
+        base_dir = TRANSCRIPTIONS_DIR
     else:
         raise HTTPException(status_code=400, detail="Invalid audio type")
 
-    file_path = base_dir / item_id / filename
+    file_path = _safe_path(base_dir, item_id, filename)
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Audio file not found")
 

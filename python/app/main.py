@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import health, profiles, tts, audio
+from app.routers import health, profiles, tts, audio, stt
 from app.routers import models as models_router
 
 
@@ -28,3 +28,4 @@ app.include_router(profiles.router, prefix="/api")
 app.include_router(tts.router, prefix="/api")
 app.include_router(audio.router, prefix="/api")
 app.include_router(models_router.router, prefix="/api")
+app.include_router(stt.router, prefix="/api")

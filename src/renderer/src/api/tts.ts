@@ -6,8 +6,11 @@ function getClient() {
   return axios.create({ baseURL: `${getBaseURL()}/api`, timeout: 120000 })
 }
 
-export async function generateSpeech(request: GenerateRequest): Promise<Generation> {
-  const res = await getClient().post('/tts/generate', request)
+export async function generateSpeech(
+  request: GenerateRequest,
+  signal?: AbortSignal
+): Promise<Generation> {
+  const res = await getClient().post('/tts/generate', request, { signal })
   return res.data
 }
 
@@ -18,4 +21,8 @@ export async function fetchGenerations(): Promise<Generation[]> {
 
 export async function deleteGeneration(id: string): Promise<void> {
   await getClient().delete(`/tts/generations/${id}`)
+}
+
+export async function cancelGeneration(): Promise<void> {
+  await getClient().post('/tts/cancel')
 }

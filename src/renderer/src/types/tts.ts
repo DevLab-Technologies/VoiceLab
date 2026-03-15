@@ -5,6 +5,9 @@ export interface GenerateRequest {
   profile_id: string
   text: string
   dialect?: DialectCode
+  speed?: number
+  nfe_step?: number
+  cfg_strength?: number
 }
 
 export interface Generation {
@@ -17,5 +20,6 @@ export interface Generation {
   model?: ModelId
   audio_path: string
   duration: number
+  elapsed_seconds?: number
   created_at: string
 }

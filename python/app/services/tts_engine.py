@@ -6,8 +6,11 @@ HabibiEngine   — HabibiTTS-backed engine (Arabic dialects via F5-TTS).
 """
 
 import abc
+import os
+import re
 import uuid
 import logging
+import tempfile
 import threading
 from pathlib import Path
 
@@ -19,6 +22,28 @@ from app.config import GENERATIONS_DIR
 logger = logging.getLogger(__name__)
 
 MIN_REF_DURATION_SEC = 2.0
+# HabibiTTS model context window is ~22 seconds total (ref + generated audio).
+# Cap reference audio to 15s so there's room for generation in each chunk.
+MAX_REF_DURATION_HABIBI = 15.0
+
+# Arabic punctuation → Latin equivalents so chunk_text() can split properly.
+# The upstream regex only splits on Latin/CJK punctuation, missing Arabic marks.
+_ARABIC_PUNCT_MAP = str.maketrans({
+    "\u060C": ",",   # ،  Arabic comma
+    "\u061B": ";",   # ؛  Arabic semicolon
+    "\u061F": "?",   # ؟  Arabic question mark
+    "\u06D4": ".",   # ۔  Arabic full stop
+})
+
+
+def _normalize_arabic_punctuation(text: str) -> str:
+    """Replace Arabic punctuation with Latin equivalents and ensure
+    whitespace after punctuation so the upstream chunk_text() regex
+    ``(?<=[;:,.!?])\\s+`` can split the text into proper batches."""
+    text = text.translate(_ARABIC_PUNCT_MAP)
+    # Ensure at least one space after sentence-ending punctuation
+    text = re.sub(r"([;:,.!?])(?=\S)", r"\1 ", text)
+    return text
 
 
 # ---------------------------------------------------------------------------
@@ -188,7 +213,9 @@ class HabibiEngine(BaseTTSEngine):
         ref_text: str,
         gen_text: str,
         dialect: str = "MSA",
-        speed: float = 0.8,
+        speed: float = 1.0,
+        nfe_step: int = 32,
+        cfg_strength: float = 2.0,
         **kwargs,
     ) -> dict:
         """
@@ -205,7 +232,13 @@ class HabibiEngine(BaseTTSEngine):
         dialect : str
             One of the HabibiTTS dialect codes (default: "MSA").
         speed : float
-            Inference speed multiplier (default: 0.8).
+            Inference speed multiplier (default: 1.0).
+        nfe_step : int
+            Number of function evaluations / denoising steps (default: 32).
+            Higher values produce better quality but take longer.
+        cfg_strength : float
+            Classifier-free guidance strength (default: 2.0).
+            Higher values make the output follow the input text more closely.
         """
         if not self._loaded:
             raise RuntimeError("HabibiEngine is not loaded. Call start_loading() first.")
@@ -227,32 +260,86 @@ class HabibiEngine(BaseTTSEngine):
                 f"Please record at least {MIN_REF_DURATION_SEC:.0f} seconds."
             )
 
-        ref_audio, ref_text_processed = preprocess_ref_audio_text(
-            ref_audio_path, ref_text
-        )
+        # Trim reference audio if it exceeds the model's context window.
+        # The HabibiTTS chunking formula uses (22 - ref_duration) which goes
+        # negative for long audio, breaking text chunking completely.
+        tmp_ref_audio_file = None
+        effective_ref_path = ref_audio_path
+        if ref_duration > MAX_REF_DURATION_HABIBI:
+            logger.warning(
+                "HabibiEngine: ref audio (%.2fs) exceeds max (%.1fs), trimming",
+                ref_duration,
+                MAX_REF_DURATION_HABIBI,
+            )
+            max_samples = int(MAX_REF_DURATION_HABIBI * sr)
+            trimmed_audio = audio_info[:, :max_samples]
 
-        dialect_id = dialect_id_map.get(dialect, dialect_id_map.get("UNK"))
+            tmp_ref_audio_file = tempfile.NamedTemporaryFile(
+                suffix=".wav", delete=False
+            )
+            torchaudio.save(tmp_ref_audio_file.name, trimmed_audio, sr)
+            effective_ref_path = tmp_ref_audio_file.name
 
-        logger.info(
-            "HabibiEngine: generating — dialect=%s speed=%.2f "
-            "ref_text_len=%d gen_text_len=%d",
-            dialect,
-            speed,
-            len(ref_text_processed),
-            len(gen_text),
-        )
+            # Proportionally trim reference text to match trimmed audio
+            trim_ratio = MAX_REF_DURATION_HABIBI / ref_duration
+            trimmed_len = max(10, int(len(ref_text) * trim_ratio))
+            # Find the last word/sentence boundary within the trimmed range
+            truncated = ref_text[:trimmed_len]
+            for sep in (" ", ".", "،", "؟", "!", ","):
+                last_break = truncated.rfind(sep)
+                if last_break > trimmed_len // 2:
+                    truncated = truncated[: last_break + 1].strip()
+                    break
+            ref_text = truncated
+            logger.info(
+                "HabibiEngine: trimmed ref to %.1fs, ref_text_len=%d",
+                MAX_REF_DURATION_HABIBI,
+                len(ref_text),
+            )
 
-        audio_data, final_sample_rate, _ = infer_process(
-            ref_audio,
-            ref_text_processed,
-            gen_text,
-            self._model,
-            self._vocoder,
-            dialect_id=dialect_id,
-            speed=speed,
-        )
+        try:
+            ref_audio, ref_text_processed = preprocess_ref_audio_text(
+                effective_ref_path, ref_text
+            )
 
-        return self._save_audio(audio_data, final_sample_rate)
+            dialect_id = dialect_id_map.get(dialect, dialect_id_map.get("UNK"))
+
+            # Normalize Arabic punctuation so upstream chunk_text() can split
+            # long text into batches that fit the model's ~22s context window.
+            gen_text = _normalize_arabic_punctuation(gen_text)
+
+            logger.info(
+                "HabibiEngine: generating — dialect=%s speed=%.2f "
+                "nfe_step=%d cfg_strength=%.2f "
+                "ref_text_len=%d gen_text_len=%d",
+                dialect,
+                speed,
+                nfe_step,
+                cfg_strength,
+                len(ref_text_processed),
+                len(gen_text),
+            )
+
+            audio_data, final_sample_rate, _ = infer_process(
+                ref_audio,
+                ref_text_processed,
+                gen_text,
+                self._model,
+                self._vocoder,
+                dialect_id=dialect_id,
+                speed=speed,
+                nfe_step=nfe_step,
+                cfg_strength=cfg_strength,
+            )
+
+            return self._save_audio(audio_data, final_sample_rate)
+        finally:
+            # Clean up temporary trimmed audio file
+            if tmp_ref_audio_file is not None:
+                try:
+                    os.unlink(tmp_ref_audio_file.name)
+                except OSError:
+                    pass
 
     def unload(self) -> None:
         """Release model and vocoder references so memory can be reclaimed."""
