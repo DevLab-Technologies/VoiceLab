@@ -3,7 +3,8 @@ import { promisify } from 'util'
 import { createServer } from 'net'
 import { join } from 'path'
 import { app } from 'electron'
-import { existsSync } from 'fs'
+import { existsSync, readFileSync, writeFileSync } from 'fs'
+import { createHash } from 'crypto'
 import http from 'http'
 
 let pythonProcess: ChildProcess | null = null
@@ -103,13 +104,22 @@ async function ensureVenv(pythonDir: string): Promise<string> {
     await execFileAsync('uv', ['venv', venvDir], { cwd: pythonDir })
   }
 
-  // Always sync dependencies to handle missing or new packages
-  console.log('Syncing Python dependencies...')
+  // Sync dependencies only when requirements.txt has changed
   const requirementsFile = join(pythonDir, 'requirements.txt')
-  await execFileAsync('uv', ['pip', 'install', '-r', requirementsFile, '--python', venvPython], {
-    cwd: pythonDir,
-    timeout: 600000
-  })
+  const hashFile = join(venvDir, '.requirements-hash')
+  const currentHash = createHash('sha256').update(readFileSync(requirementsFile)).digest('hex')
+  const cachedHash = existsSync(hashFile) ? readFileSync(hashFile, 'utf-8').trim() : ''
+
+  if (currentHash !== cachedHash) {
+    console.log('Syncing Python dependencies...')
+    await execFileAsync('uv', ['pip', 'install', '-r', requirementsFile, '--python', venvPython], {
+      cwd: pythonDir,
+      timeout: 600000
+    })
+    writeFileSync(hashFile, currentHash)
+  } else {
+    console.log('Python dependencies up to date.')
+  }
 
   return venvPython
 }

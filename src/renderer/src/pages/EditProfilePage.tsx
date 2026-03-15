@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ArrowLeft, Save, Loader2 } from 'lucide-react'
+import { ArrowLeft, Save, Loader2, AlertTriangle } from 'lucide-react'
 import Header from '../components/layout/Header'
 import ModelSelector from '../components/profiles/ModelSelector'
 import DialectSelector from '../components/profiles/DialectSelector'
@@ -11,6 +11,7 @@ import Spinner from '../components/ui/Spinner'
 import { useAppStore } from '../store'
 import { updateProfile } from '../api/profiles'
 import { getProfileAudioUrl } from '../api/audio'
+import { extractApiError } from '../lib/utils'
 import type { DialectCode } from '../types/dialect'
 import type { ModelId } from '../types/model'
 
@@ -24,11 +25,13 @@ export default function EditProfilePage() {
   const [dialect, setDialect] = useState<DialectCode>('MSA')
   const [language, setLanguage] = useState('English')
   const [refText, setRefText] = useState('')
+  const [originalModel, setOriginalModel] = useState<ModelId>('habibi-tts')
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
 
   const profile = profiles.find((p) => p.id === id)
   const isHabibi = model === 'habibi-tts'
+  const modelChanged = model !== originalModel
 
   useEffect(() => {
     if (profiles.length === 0) fetchProfiles()
@@ -38,7 +41,9 @@ export default function EditProfilePage() {
   useEffect(() => {
     if (profile) {
       setName(profile.name)
-      setModel((profile.model || 'habibi-tts') as ModelId)
+      const profileModel = (profile.model || 'habibi-tts') as ModelId
+      setModel(profileModel)
+      setOriginalModel(profileModel)
       if (profile.dialect) setDialect(profile.dialect)
       if (profile.language) setLanguage(profile.language)
       setRefText(profile.ref_text)
@@ -61,7 +66,7 @@ export default function EditProfilePage() {
       addToast('Profile updated', 'success')
       navigate('/profiles')
     } catch (err: any) {
-      addToast(err?.response?.data?.detail || 'Failed to update', 'error')
+      addToast(extractApiError(err, 'Failed to update'), 'error')
     } finally {
       setSaving(false)
     }
@@ -108,6 +113,13 @@ export default function EditProfilePage() {
           onChange={setModel}
           availableModels={availableModels}
         />
+
+        {modelChanged && (
+          <div className="flex items-start gap-2 text-sm text-yellow-400 bg-yellow-400/10 px-3 py-2 rounded-lg">
+            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+            <span>Changing the TTS model may affect output quality if the reference audio was recorded for a different model.</span>
+          </div>
+        )}
 
         {/* Dialect or Language */}
         {isHabibi ? (

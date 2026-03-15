@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link2, Loader2, Play, Download, Clock, User, AlertCircle } from 'lucide-react'
 import { fetchVideoInfo, extractAudio, type VideoInfo } from '../../api/youtube'
+import { extractApiError } from '../../lib/utils'
 
 type State = 'idle' | 'loading-info' | 'preview' | 'extracting' | 'done' | 'error'
 
@@ -38,7 +39,7 @@ export default function YouTubeImporter({
       setEndSec(maxDuration ? Math.min(videoInfo.duration, maxDuration) : videoInfo.duration)
       setState('preview')
     } catch (err: any) {
-      setError(err?.response?.data?.detail || 'Failed to fetch video info')
+      setError(extractApiError(err, 'Failed to fetch video info'))
       setState('error')
     }
   }
@@ -59,7 +60,7 @@ export default function YouTubeImporter({
       setState('done')
       onExtracted(audioBlob, { title, duration })
     } catch (err: any) {
-      setError(err?.response?.data?.detail || 'Failed to extract audio')
+      setError(extractApiError(err, 'Failed to extract audio'))
       setState('error')
     }
   }

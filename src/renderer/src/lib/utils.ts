@@ -33,3 +33,8 @@ export function formatElapsed(seconds: number): string {
   const secs = Math.round(seconds % 60)
   return `${mins}m ${secs}s`
 }
+
+export function extractApiError(err: unknown, fallback: string): string {
+  const e = err as { response?: { data?: { detail?: string } } }
+  return e?.response?.data?.detail || fallback
+}

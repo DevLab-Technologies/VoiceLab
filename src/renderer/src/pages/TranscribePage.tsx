@@ -4,8 +4,10 @@ import { FileAudio, Upload, Loader2, Copy, Check } from 'lucide-react'
 import Header from '../components/layout/Header'
 import AudioRecorder from '../components/audio/AudioRecorder'
 import YouTubeImporter from '../components/audio/YouTubeImporter'
+import AudioSourceTabs from '../components/audio/AudioSourceTabs'
 import { transcribeAudio } from '../api/stt'
 import { useAppStore } from '../store'
+import { extractApiError } from '../lib/utils'
 
 type Tab = 'record' | 'import' | 'youtube'
 
@@ -57,7 +59,7 @@ export default function TranscribePage() {
       )
       setResult(res.text)
     } catch (err: any) {
-      addToast(err?.response?.data?.detail || 'Transcription failed', 'error')
+      addToast(extractApiError(err, 'Transcription failed'), 'error')
     } finally {
       setTranscribing(false)
     }
@@ -81,31 +83,12 @@ export default function TranscribePage() {
         {/* Audio Source Tabs */}
         <div>
           <label className="block text-sm font-medium text-gray-300 mb-3">Audio Source</label>
-          <div className="flex gap-1 bg-surface-200 p-1 rounded-lg mb-4 w-fit">
-            <button
-              onClick={() => setTab('record')}
-              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
-                tab === 'record' ? 'bg-accent text-white' : 'text-gray-400 hover:text-white'
-              }`}
-            >
-              Record
-            </button>
-            <button
-              onClick={() => setTab('youtube')}
-              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
-                tab === 'youtube' ? 'bg-accent text-white' : 'text-gray-400 hover:text-white'
-              }`}
-            >
-              YouTube
-            </button>
-            <button
-              onClick={() => setTab('import')}
-              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
-                tab === 'import' ? 'bg-accent text-white' : 'text-gray-400 hover:text-white'
-              }`}
-            >
-              Import
-            </button>
+          <div className="mb-4">
+            <AudioSourceTabs
+              value={tab}
+              onChange={setTab}
+              tabs={['record', 'youtube', 'import']}
+            />
           </div>
 
           {tab === 'record' ? (

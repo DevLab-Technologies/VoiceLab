@@ -9,8 +9,10 @@ import LanguageSelector from '../components/profiles/LanguageSelector'
 import AudioRecorder from '../components/audio/AudioRecorder'
 import AudioImporter from '../components/audio/AudioImporter'
 import YouTubeImporter from '../components/audio/YouTubeImporter'
+import AudioSourceTabs from '../components/audio/AudioSourceTabs'
 import { useAppStore } from '../store'
 import { transcribeAudio } from '../api/stt'
+import { extractApiError } from '../lib/utils'
 import type { DialectCode } from '../types/dialect'
 import type { ModelId } from '../types/model'
 
@@ -52,7 +54,7 @@ export default function NewProfilePage() {
       )
       navigate('/profiles')
     } catch (err: any) {
-      addToast(err?.response?.data?.detail || 'Failed to create profile', 'error')
+      addToast(extractApiError(err, 'Failed to create profile'), 'error')
     } finally {
       setSaving(false)
     }
@@ -82,7 +84,7 @@ export default function NewProfilePage() {
       setRefText(res.text)
       addToast('Audio transcribed', 'success')
     } catch (err: any) {
-      addToast(err?.response?.data?.detail || 'Transcription failed', 'error')
+      addToast(extractApiError(err, 'Transcription failed'), 'error')
     } finally {
       setTranscribing(false)
     }
@@ -143,31 +145,8 @@ export default function NewProfilePage() {
           </p>
 
           {/* Tab switcher */}
-          <div className="flex gap-1 bg-surface-200 p-1 rounded-lg mb-4 w-fit">
-            <button
-              onClick={() => setAudioSource('record')}
-              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
-                audioSource === 'record' ? 'bg-accent text-white' : 'text-gray-400 hover:text-white'
-              }`}
-            >
-              Record
-            </button>
-            <button
-              onClick={() => setAudioSource('import')}
-              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
-                audioSource === 'import' ? 'bg-accent text-white' : 'text-gray-400 hover:text-white'
-              }`}
-            >
-              Import
-            </button>
-            <button
-              onClick={() => setAudioSource('youtube')}
-              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
-                audioSource === 'youtube' ? 'bg-accent text-white' : 'text-gray-400 hover:text-white'
-              }`}
-            >
-              YouTube
-            </button>
+          <div className="mb-4">
+            <AudioSourceTabs value={audioSource} onChange={setAudioSource} />
           </div>
 
           {audioSource === 'record' ? (

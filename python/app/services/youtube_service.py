@@ -39,7 +39,7 @@ async def get_video_info(url: str) -> dict:
             "--no-download",
             "--print", "%(title)s\n%(duration)s\n%(channel)s",
             "--no-playlist",
-            url,
+            "--", url,
         ],
     )
     if result.returncode != 0:
@@ -88,7 +88,7 @@ async def extract_audio(
             "--audio-format", "wav",
             "--no-playlist",
             "-o", str(raw_path),
-            url,
+            "--", url,
         ]
         result = await asyncio.to_thread(_run_yt_dlp, dl_args)
         if result.returncode != 0:
@@ -104,16 +104,18 @@ async def extract_audio(
         if not downloaded or not downloaded.exists():
             raise ValueError("Downloaded audio file not found")
 
-        # Convert to 24kHz mono WAV with optional trimming
-        ffmpeg_args = ["ffmpeg", "-y", "-i", str(downloaded)]
+        # Convert to 24kHz mono WAV with optional trimming.
+        # Place -ss before -i for fast keyframe seeking, then use
+        # -ss 0 after -i for sample-accurate trim from that point.
+        ffmpeg_args = ["ffmpeg", "-y"]
         if start_sec is not None:
             ffmpeg_args.extend(["-ss", str(start_sec)])
+        ffmpeg_args.extend(["-i", str(downloaded)])
+        if start_sec is not None:
+            ffmpeg_args.extend(["-ss", "0"])
         if end_sec is not None:
-            if start_sec is not None:
-                ffmpeg_args.extend(["-t", str(end_sec - start_sec)])
-            else:
-                # No start offset: -t acts as duration from beginning
-                ffmpeg_args.extend(["-t", str(end_sec)])
+            duration = (end_sec - start_sec) if start_sec is not None else end_sec
+            ffmpeg_args.extend(["-t", str(duration)])
         ffmpeg_args.extend([
             "-ar", str(SAMPLE_RATE),
             "-ac", "1",
