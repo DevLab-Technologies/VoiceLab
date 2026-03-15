@@ -15,6 +15,14 @@ from app.config import DB_FILE, PROFILES_DIR, GENERATIONS_DIR, TRANSCRIPTIONS_DI
 logger = logging.getLogger(__name__)
 
 
+def _safe_subdir(base: Path, name: str) -> Path:
+    """Resolve *name* as a direct child of *base* and verify it stays inside."""
+    resolved = (base / name).resolve()
+    if not resolved.is_relative_to(base.resolve()):
+        raise ValueError(f"Invalid id: {name!r}")
+    return resolved
+
+
 class ProfileStore:
     def __init__(self):
         self._data = {"profiles": [], "generations": [], "transcriptions": []}
@@ -149,8 +157,8 @@ class ProfileStore:
             for i, p in enumerate(self._data["profiles"]):
                 if p["id"] == profile_id:
                     self._data["profiles"].pop(i)
-                    # Remove files
-                    profile_dir = PROFILES_DIR / profile_id
+                    # Remove files (with path traversal guard)
+                    profile_dir = _safe_subdir(PROFILES_DIR, profile_id)
                     if profile_dir.exists():
                         shutil.rmtree(profile_dir)
                     # Remove related generations
@@ -218,7 +226,7 @@ class ProfileStore:
             for i, g in enumerate(self._data["generations"]):
                 if g["id"] == generation_id:
                     self._data["generations"].pop(i)
-                    gen_dir = GENERATIONS_DIR / generation_id
+                    gen_dir = _safe_subdir(GENERATIONS_DIR, generation_id)
                     if gen_dir.exists():
                         shutil.rmtree(gen_dir)
                     self._save_unlocked()
@@ -272,7 +280,7 @@ class ProfileStore:
             for i, t in enumerate(transcriptions):
                 if t["id"] == transcription_id:
                     transcriptions.pop(i)
-                    trans_dir = TRANSCRIPTIONS_DIR / transcription_id
+                    trans_dir = _safe_subdir(TRANSCRIPTIONS_DIR, transcription_id)
                     if trans_dir.exists():
                         shutil.rmtree(trans_dir)
                     self._save_unlocked()

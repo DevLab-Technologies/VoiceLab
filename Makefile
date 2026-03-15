@@ -37,7 +37,7 @@ prepare-python: ## Download portable Python runtime and install deps
 # ── Release ───────────────────────────────────────────────────
 
 release-mac: prepare-python build ## Build macOS release (.dmg)
-	npx electron-builder --mac --publish never
+	npx dotenv -- npx electron-builder --mac --publish never
 	@echo ""
 	@echo "macOS release ready in dist/"
 	@ls -lh dist/*.dmg 2>/dev/null || true
@@ -55,7 +55,7 @@ release-linux: prepare-python build ## Build Linux release (.AppImage)
 	@ls -lh dist/*.AppImage 2>/dev/null || true
 
 release-all: prepare-python build ## Build releases for all platforms
-	npx electron-builder --mac --win --linux --publish never
+	npx dotenv -- npx electron-builder --mac --win --linux --publish never
 	@echo ""
 	@echo "All releases ready in dist/"
 	@ls -lh dist/*.dmg dist/*.exe dist/*.AppImage 2>/dev/null || true

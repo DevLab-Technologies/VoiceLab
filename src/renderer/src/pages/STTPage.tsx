@@ -1,17 +1,16 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { AudioLines, Loader2, Copy, Check, Download, X, RotateCcw } from 'lucide-react'
+import { AudioLines, Loader2, Copy, Check, X, RotateCcw } from 'lucide-react'
 import Header from '../components/layout/Header'
 import AudioRecorder from '../components/audio/AudioRecorder'
 import AudioImporter from '../components/audio/AudioImporter'
+import STTModelSelector from '../components/stt/STTModelSelector'
 import { useAppStore } from '../store'
 
 export default function STTPage() {
-  const navigate = useNavigate()
   const {
     addToast,
-    sttModel, setSttModel,
+    sttModel,
     sttModels, fetchSttModels,
     sttTranscribing, sttResult, setSttResult,
     sttAudioBlob, sttAudioSource, setSttAudioSource,
@@ -65,41 +64,7 @@ export default function STTPage() {
           <label className="block text-sm font-medium text-gray-300 mb-2">
             Whisper Model
           </label>
-          <div className="grid grid-cols-2 gap-2">
-            {sttModels.map((m) => {
-              const downloaded = m.status === 'downloaded' || m.status === 'loaded'
-              const selected = sttModel === m.id
-
-              return (
-                <button
-                  key={m.id}
-                  onClick={() => {
-                    if (downloaded) {
-                      setSttModel(m.id)
-                    } else {
-                      navigate('/models')
-                      addToast('Download the model first from the Models page', 'info')
-                    }
-                  }}
-                  className={`text-left p-3 rounded-xl border transition-all ${
-                    !downloaded
-                      ? 'border-white/5 bg-surface-200 opacity-50 cursor-not-allowed'
-                      : selected
-                        ? 'border-accent/40 bg-accent/5'
-                        : 'border-white/5 bg-surface-200 hover:bg-surface-300'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-gray-300">{m.label}</span>
-                    {!downloaded && <Download className="w-3 h-3 text-gray-500" />}
-                  </div>
-                  <p className="text-[10px] text-gray-500 mt-0.5">
-                    {!downloaded ? 'Not downloaded' : m.description}
-                  </p>
-                </button>
-              )
-            })}
-          </div>
+          <STTModelSelector layout="grid" />
         </div>
 
         {/* Audio Source */}

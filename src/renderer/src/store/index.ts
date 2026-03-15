@@ -121,6 +121,7 @@ interface AppState {
 // Module-level AbortControllers for cancelling in-flight requests
 let _generationAbort: AbortController | null = null
 let _sttAbort: AbortController | null = null
+let _updateResetTimer: ReturnType<typeof setTimeout> | null = null
 
 export const useAppStore = create<AppState>((set, get) => ({
   // Backend
@@ -557,6 +558,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (data.version) set({ updateVersion: data.version })
       if (data.percent !== undefined) set({ updateProgress: data.percent })
       if (data.message) set({ updateError: data.message })
+
+      // Auto-reset transient statuses back to idle
+      if (_updateResetTimer) clearTimeout(_updateResetTimer)
+      if (data.status === 'up-to-date') {
+        _updateResetTimer = setTimeout(() => set({ updateStatus: 'idle' }), 5000)
+      }
     })
     return cleanup
   },

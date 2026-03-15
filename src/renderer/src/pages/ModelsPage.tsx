@@ -231,7 +231,11 @@ export default function ModelsPage() {
                         {isDownloading && (
                           <div className="flex items-center gap-2">
                             <Loader2 className="w-3.5 h-3.5 text-accent animate-spin" />
-                            <span className="text-xs text-accent">Downloading...</span>
+                            <span className="text-xs text-accent">
+                              Downloading{m.size_mb >= 1000
+                                ? ` (~${(m.size_mb / 1000).toFixed(1)} GB)`
+                                : ` (~${m.size_mb} MB)`}...
+                            </span>
                           </div>
                         )}
 

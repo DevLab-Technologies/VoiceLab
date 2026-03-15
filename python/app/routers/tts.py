@@ -140,11 +140,11 @@ async def generate_speech(request: GenerateRequest):
                     "Try shorter text or use a longer reference audio clip."
                 ),
             )
-        logger.error("TTS generation failed: %s", exc, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"TTS generation failed: {exc}")
+        logger.error("TTS generation failed (RuntimeError): %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail="TTS generation failed unexpectedly. Check server logs for details.")
     except Exception as exc:
         logger.error("TTS generation failed: %s", exc, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"TTS generation failed: {exc}")
+        raise HTTPException(status_code=500, detail="TTS generation failed unexpectedly. Check server logs for details.")
 
     # Check if generation was cancelled while inference was running
     if _cancelled.is_set():
