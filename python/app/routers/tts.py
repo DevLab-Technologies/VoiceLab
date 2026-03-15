@@ -155,7 +155,7 @@ async def generate_speech(request: GenerateRequest):
                 shutil.rmtree(gen_dir)
         except Exception:
             pass
-        raise HTTPException(status_code=499, detail="Generation cancelled")
+        raise HTTPException(status_code=409, detail="Generation cancelled")
 
     gen_elapsed = time.time() - gen_start_time
 

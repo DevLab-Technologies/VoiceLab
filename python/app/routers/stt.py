@@ -81,7 +81,7 @@ async def transcribe_audio(
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
         logger.error("STT transcription failed: %s", exc, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Transcription failed: {exc}")
+        raise HTTPException(status_code=500, detail="Transcription failed. Check server logs for details.")
 
     if not save:
         # Clean up temp file and return simple result

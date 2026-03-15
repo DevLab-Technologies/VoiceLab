@@ -562,16 +562,24 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   checkForUpdates: async () => {
     set({ updateStatus: 'checking', updateError: '' })
-    const result = await window.api.checkForUpdates()
-    if (!result.success) {
-      set({ updateStatus: 'error', updateError: result.error || 'Failed to check for updates' })
+    try {
+      const result = await window.api.checkForUpdates()
+      if (!result.success) {
+        set({ updateStatus: 'error', updateError: result.error || 'Failed to check for updates' })
+      }
+    } catch {
+      set({ updateStatus: 'error', updateError: 'Failed to check for updates' })
     }
   },
   downloadUpdate: async () => {
     set({ updateProgress: 0 })
-    const result = await window.api.downloadUpdate()
-    if (!result.success) {
-      set({ updateStatus: 'error', updateError: result.error || 'Download failed' })
+    try {
+      const result = await window.api.downloadUpdate()
+      if (!result.success) {
+        set({ updateStatus: 'error', updateError: result.error || 'Download failed' })
+      }
+    } catch {
+      set({ updateStatus: 'error', updateError: 'Download failed' })
     }
   },
   installUpdate: () => {

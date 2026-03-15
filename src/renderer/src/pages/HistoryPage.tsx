@@ -11,6 +11,7 @@ import { DIALECT_MAP, MODEL_INFO, LANGUAGE_MAP } from '../lib/constants'
 import { truncateText, formatDate, formatElapsed } from '../lib/utils'
 import { getGenerationAudioUrl, getTranscriptionAudioUrl } from '../api/audio'
 import { sttModelName } from '../lib/stt-models'
+import { buildDebugData } from '../lib/debug'
 
 export default function HistoryPage() {
   const {
@@ -46,38 +47,7 @@ export default function HistoryPage() {
 
   const copyDebugData = async (gen: typeof generations[0]) => {
     const profile = profiles.find((p) => p.id === gen.profile_id)
-    const debugData = {
-      generation_id: gen.id,
-      profile: profile
-        ? {
-            id: profile.id,
-            name: profile.name,
-            model: profile.model || 'habibi-tts',
-            dialect: profile.dialect || null,
-            language: profile.language || null,
-            ref_text: profile.ref_text,
-            ref_audio_duration: profile.ref_audio_duration
-          }
-        : { id: gen.profile_id, name: gen.profile_name },
-      input: {
-        text: gen.text,
-        text_length: gen.text.length
-      },
-      output: {
-        duration: gen.duration,
-        elapsed_seconds: gen.elapsed_seconds || 0,
-        audio_path: gen.audio_path,
-        model: gen.model || 'habibi-tts',
-        dialect: gen.dialect || null,
-        language: gen.language || null
-      },
-      app: {
-        version: appVersion || '1.0.0',
-        backend_ready: backendReady,
-        platform: navigator.platform
-      },
-      created_at: gen.created_at
-    }
+    const debugData = buildDebugData(gen, profile, { version: appVersion, backendReady })
     try {
       await navigator.clipboard.writeText(JSON.stringify(debugData, null, 2))
       addToast('Debug data copied to clipboard', 'success')

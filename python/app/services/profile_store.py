@@ -125,37 +125,40 @@ class ProfileStore:
             "language": language,
         }
 
-        self._data["profiles"].append(profile)
-        self._save()
+        with self._lock:
+            self._data["profiles"].append(profile)
+            self._save_unlocked()
         return profile
 
     def update(self, profile_id: str, update) -> Optional[dict]:
-        for i, p in enumerate(self._data["profiles"]):
-            if p["id"] == profile_id:
-                update_dict = update.model_dump(exclude_unset=True)
-                for key, value in update_dict.items():
-                    if value is not None:
-                        p[key] = value if not hasattr(value, "value") else value.value
-                p["updated_at"] = datetime.now(timezone.utc).isoformat()
-                self._data["profiles"][i] = p
-                self._save()
-                return p
+        with self._lock:
+            for i, p in enumerate(self._data["profiles"]):
+                if p["id"] == profile_id:
+                    update_dict = update.model_dump(exclude_unset=True)
+                    for key, value in update_dict.items():
+                        if value is not None:
+                            p[key] = value if not hasattr(value, "value") else value.value
+                    p["updated_at"] = datetime.now(timezone.utc).isoformat()
+                    self._data["profiles"][i] = p
+                    self._save_unlocked()
+                    return p
         return None
 
     def delete(self, profile_id: str) -> bool:
-        for i, p in enumerate(self._data["profiles"]):
-            if p["id"] == profile_id:
-                self._data["profiles"].pop(i)
-                # Remove files
-                profile_dir = PROFILES_DIR / profile_id
-                if profile_dir.exists():
-                    shutil.rmtree(profile_dir)
-                # Remove related generations
-                self._data["generations"] = [
-                    g for g in self._data["generations"] if g["profile_id"] != profile_id
-                ]
-                self._save()
-                return True
+        with self._lock:
+            for i, p in enumerate(self._data["profiles"]):
+                if p["id"] == profile_id:
+                    self._data["profiles"].pop(i)
+                    # Remove files
+                    profile_dir = PROFILES_DIR / profile_id
+                    if profile_dir.exists():
+                        shutil.rmtree(profile_dir)
+                    # Remove related generations
+                    self._data["generations"] = [
+                        g for g in self._data["generations"] if g["profile_id"] != profile_id
+                    ]
+                    self._save_unlocked()
+                    return True
         return False
 
     # -- Generations --
@@ -196,8 +199,9 @@ class ProfileStore:
             "model": model,
             "language": language,
         }
-        self._data["generations"].append(generation)
-        self._save()
+        with self._lock:
+            self._data["generations"].append(generation)
+            self._save_unlocked()
         return generation
 
     def list_generations(self) -> List[dict]:
@@ -210,14 +214,15 @@ class ProfileStore:
         return None
 
     def delete_generation(self, generation_id: str) -> bool:
-        for i, g in enumerate(self._data["generations"]):
-            if g["id"] == generation_id:
-                self._data["generations"].pop(i)
-                gen_dir = GENERATIONS_DIR / generation_id
-                if gen_dir.exists():
-                    shutil.rmtree(gen_dir)
-                self._save()
-                return True
+        with self._lock:
+            for i, g in enumerate(self._data["generations"]):
+                if g["id"] == generation_id:
+                    self._data["generations"].pop(i)
+                    gen_dir = GENERATIONS_DIR / generation_id
+                    if gen_dir.exists():
+                        shutil.rmtree(gen_dir)
+                    self._save_unlocked()
+                    return True
         return False
 
     # -- Transcriptions --
@@ -243,8 +248,9 @@ class ProfileStore:
             "elapsed_seconds": round(elapsed_seconds, 1),
             "created_at": now,
         }
-        self._data["transcriptions"].append(transcription)
-        self._save()
+        with self._lock:
+            self._data["transcriptions"].append(transcription)
+            self._save_unlocked()
         return transcription
 
     def list_transcriptions(self) -> List[dict]:
@@ -261,15 +267,16 @@ class ProfileStore:
         return None
 
     def delete_transcription(self, transcription_id: str) -> bool:
-        transcriptions = self._data.get("transcriptions", [])
-        for i, t in enumerate(transcriptions):
-            if t["id"] == transcription_id:
-                transcriptions.pop(i)
-                trans_dir = TRANSCRIPTIONS_DIR / transcription_id
-                if trans_dir.exists():
-                    shutil.rmtree(trans_dir)
-                self._save()
-                return True
+        with self._lock:
+            transcriptions = self._data.get("transcriptions", [])
+            for i, t in enumerate(transcriptions):
+                if t["id"] == transcription_id:
+                    transcriptions.pop(i)
+                    trans_dir = TRANSCRIPTIONS_DIR / transcription_id
+                    if trans_dir.exists():
+                        shutil.rmtree(trans_dir)
+                    self._save_unlocked()
+                    return True
         return False
 
 

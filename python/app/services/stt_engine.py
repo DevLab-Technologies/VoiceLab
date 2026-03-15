@@ -320,9 +320,19 @@ class STTEngine:
 
     def get_models_status(self) -> list[dict]:
         """Return all STT models with their download/loaded status."""
+        # Scan the HuggingFace cache once for all models
+        cached_repos: set[str] = set()
+        try:
+            cache_info = scan_cache_dir()
+            for repo in cache_info.repos:
+                if repo.size_on_disk > 1_000_000:
+                    cached_repos.add(repo.repo_id)
+        except Exception:
+            pass
+
         results = []
         for m in WHISPER_MODELS:
-            downloaded = self.is_model_downloaded(m["id"])
+            downloaded = m["id"] in cached_repos
             loaded = self._current_model == m["id"] and self._model is not None
             results.append({
                 **m,

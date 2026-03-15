@@ -6,6 +6,7 @@ import ProfileSelector from '../components/profiles/ProfileSelector'
 import AudioPlayer from '../components/audio/AudioPlayer'
 import { useAppStore } from '../store'
 import { getGenerationAudioUrl } from '../api/audio'
+import { buildDebugData } from '../lib/debug'
 
 export default function TTSPage() {
   const {
@@ -41,32 +42,8 @@ export default function TTSPage() {
   const canGenerate = selectedProfileId && generationText.trim() && !isGenerating
 
   const copyDebugData = async () => {
-    if (!currentGeneration || !selectedProfile) return
-    const debugData = {
-      generation_id: currentGeneration.id,
-      profile: {
-        id: selectedProfile.id,
-        name: selectedProfile.name,
-        model: selectedProfile.model || 'habibi-tts',
-        dialect: selectedProfile.dialect || null,
-        language: selectedProfile.language || null,
-        ref_text: selectedProfile.ref_text,
-        ref_audio_duration: selectedProfile.ref_audio_duration
-      },
-      input: {
-        text: currentGeneration.text,
-        text_length: currentGeneration.text.length
-      },
-      output: {
-        duration: currentGeneration.duration,
-        audio_path: currentGeneration.audio_path
-      },
-      app: {
-        version: appVersion || '1.0.0',
-        backend_ready: backendReady,
-        platform: navigator.platform
-      }
-    }
+    if (!currentGeneration) return
+    const debugData = buildDebugData(currentGeneration, selectedProfile, { version: appVersion, backendReady })
     try {
       await navigator.clipboard.writeText(JSON.stringify(debugData, null, 2))
       addToast('Debug data copied to clipboard', 'success')
