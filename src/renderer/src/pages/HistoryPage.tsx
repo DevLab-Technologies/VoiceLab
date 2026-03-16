@@ -17,7 +17,7 @@ export default function HistoryPage() {
   const {
     generations, fetchGenerations, deleteGeneration, prepareRegeneration,
     transcriptions, fetchTranscriptions, deleteTranscription,
-    sttModels,
+    sttModels, fetchSttModels,
     devMode, profiles, backendReady, addToast, appVersion
   } = useAppStore()
   const navigate = useNavigate()
@@ -31,7 +31,8 @@ export default function HistoryPage() {
   useEffect(() => {
     Promise.all([
       fetchGenerations(),
-      fetchTranscriptions()
+      fetchTranscriptions(),
+      fetchSttModels()
     ]).finally(() => setLoading(false))
   }, [])
 

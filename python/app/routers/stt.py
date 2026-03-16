@@ -68,6 +68,7 @@ async def transcribe_audio(
             status_code=413,
             detail=f"File too large. Maximum upload size is {MAX_UPLOAD_BYTES // (1024 * 1024)} MB.",
         )
+    tmp_path: Optional[str] = None
     try:
         with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
             tmp.write(content)
@@ -85,25 +86,14 @@ async def transcribe_audio(
             model_id=model,
         )
         elapsed = time.time() - start_time
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-    except Exception as exc:
-        logger.error("STT transcription failed: %s", exc, exc_info=True)
-        raise HTTPException(status_code=500, detail="Transcription failed. Check server logs for details.")
 
-    if not save:
-        # Clean up temp file and return simple result
-        try:
-            Path(tmp_path).unlink(missing_ok=True)
-        except Exception:
-            pass
-        return {
-            "text": text,
-            "model": stt_engine.current_model,
-        }
+        if not save:
+            return {
+                "text": text,
+                "model": stt_engine.current_model,
+            }
 
-    # Save mode: persist source audio and transcription record
-    try:
+        # Save mode: persist source audio and transcription record
         transcription_id = str(_uuid.uuid4())
         trans_dir = _safe_subdir(TRANSCRIPTIONS_DIR, transcription_id)
         trans_dir.mkdir(parents=True, exist_ok=True)
@@ -137,19 +127,19 @@ async def transcribe_audio(
         )
 
         return record
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except HTTPException:
+        raise
     except Exception as exc:
-        logger.error("Failed to save transcription: %s", exc, exc_info=True)
-        # Still return the text even if saving failed
-        return {
-            "text": text,
-            "model": stt_engine.current_model,
-        }
+        logger.error("STT transcription failed: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail="Transcription failed. Check server logs for details.")
     finally:
-        # Clean up temp file
-        try:
-            Path(tmp_path).unlink(missing_ok=True)
-        except Exception:
-            pass
+        if tmp_path:
+            try:
+                Path(tmp_path).unlink(missing_ok=True)
+            except Exception:
+                pass
 
 
 @router.get("/stt/transcriptions")
@@ -189,7 +179,7 @@ async def download_stt_model(model_id: str):
         await asyncio.to_thread(stt_engine.download_model, model_id)
     except Exception as exc:
         logger.error("Failed to download STT model %s: %s", model_id, exc, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Download failed: {exc}")
+        raise HTTPException(status_code=500, detail="Download failed. Check server logs for details.")
 
     return {"status": "downloaded"}
 
@@ -210,6 +200,6 @@ async def delete_stt_model(model_id: str):
         await asyncio.to_thread(stt_engine.delete_model, model_id)
     except Exception as exc:
         logger.error("Failed to delete STT model %s: %s", model_id, exc, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Delete failed: {exc}")
+        raise HTTPException(status_code=500, detail="Delete failed. Check server logs for details.")
 
     return {"status": "deleted"}

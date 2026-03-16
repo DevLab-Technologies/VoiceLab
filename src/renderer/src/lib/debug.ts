@@ -39,7 +39,7 @@ export function buildDebugData(
     app: {
       version: app.version || '1.0.0',
       backend_ready: app.backendReady,
-      platform: navigator.platform
+      platform: (navigator as any).userAgentData?.platform || navigator.platform || 'unknown'
     },
     created_at: generation.created_at
   }

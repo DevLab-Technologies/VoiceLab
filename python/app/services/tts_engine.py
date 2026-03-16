@@ -23,8 +23,11 @@ logger = logging.getLogger(__name__)
 
 MIN_REF_DURATION_SEC = 2.0
 # HabibiTTS model context window is ~22 seconds total (ref + generated audio).
-# Cap reference audio to 15s so there's room for generation in each chunk.
-MAX_REF_DURATION_HABIBI = 15.0
+# F5-TTS docs recommend under 12s to leave room for generation in each chunk.
+MAX_REF_DURATION_HABIBI = 12.0
+# Silence appended to reference audio to prevent the last phrase from leaking
+# into generated output (see F5-TTS issue #85).
+TRAILING_SILENCE_SEC = 1.0
 
 # Arabic punctuation → Latin equivalents so chunk_text() can split properly.
 # The upstream regex only splits on Latin/CJK punctuation, missing Arabic marks.
@@ -260,11 +263,14 @@ class HabibiEngine(BaseTTSEngine):
                 f"Please record at least {MIN_REF_DURATION_SEC:.0f} seconds."
             )
 
+        import torch  # type: ignore
+
         # Trim reference audio if it exceeds the model's context window.
         # The HabibiTTS chunking formula uses (22 - ref_duration) which goes
         # negative for long audio, breaking text chunking completely.
         tmp_ref_audio_file = None
         effective_ref_path = ref_audio_path
+
         if ref_duration > MAX_REF_DURATION_HABIBI:
             logger.warning(
                 "HabibiEngine: ref audio (%.2fs) exceeds max (%.1fs), trimming",
@@ -272,13 +278,7 @@ class HabibiEngine(BaseTTSEngine):
                 MAX_REF_DURATION_HABIBI,
             )
             max_samples = int(MAX_REF_DURATION_HABIBI * sr)
-            trimmed_audio = audio_info[:, :max_samples]
-
-            tmp_ref_audio_file = tempfile.NamedTemporaryFile(
-                suffix=".wav", delete=False
-            )
-            torchaudio.save(tmp_ref_audio_file.name, trimmed_audio, sr)
-            effective_ref_path = tmp_ref_audio_file.name
+            audio_info = audio_info[:, :max_samples]
 
             # Proportionally trim reference text to match trimmed audio
             trim_ratio = MAX_REF_DURATION_HABIBI / ref_duration
@@ -297,7 +297,25 @@ class HabibiEngine(BaseTTSEngine):
                 len(ref_text),
             )
 
+        # Append trailing silence to prevent the last phrase of ref_text
+        # from leaking into generated output (F5-TTS issue #85).
+        silence_samples = int(TRAILING_SILENCE_SEC * sr)
+        silence = torch.zeros(1, silence_samples, dtype=audio_info.dtype)
+        audio_info = torch.cat([audio_info, silence], dim=-1)
+
+        # Always write modified audio (with silence appended) to a temp file
+        tmp_ref_audio_file = tempfile.NamedTemporaryFile(
+            suffix=".wav", delete=False
+        )
+        torchaudio.save(tmp_ref_audio_file.name, audio_info, sr)
+        effective_ref_path = tmp_ref_audio_file.name
+
         try:
+            # Ensure ref_text ends with "." so the model recognises the
+            # boundary between reference and generated speech.
+            if ref_text and not ref_text.rstrip().endswith((".", "!", "?", "؟")):
+                ref_text = ref_text.rstrip() + "."
+
             ref_audio, ref_text_processed = preprocess_ref_audio_text(
                 effective_ref_path, ref_text
             )
@@ -307,6 +325,10 @@ class HabibiEngine(BaseTTSEngine):
             # Normalize Arabic punctuation so upstream chunk_text() can split
             # long text into batches that fit the model's ~22s context window.
             gen_text = _normalize_arabic_punctuation(gen_text)
+
+            # Prepend a space so the model cleanly separates ref from gen text.
+            if gen_text and not gen_text.startswith(" "):
+                gen_text = " " + gen_text
 
             logger.info(
                 "HabibiEngine: generating — dialect=%s speed=%.2f "

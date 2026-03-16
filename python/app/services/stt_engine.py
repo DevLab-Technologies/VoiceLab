@@ -127,12 +127,9 @@ class STTEngine:
             if self._current_model == model_id and self._model is not None:
                 return  # already loaded
             if self._loading:
-                logger.warning(
-                    "STTEngine: load(%s) called while already loading %s — skipping",
-                    model_id,
-                    self._current_model or "unknown",
+                raise RuntimeError(
+                    f"Model is currently loading. Please wait before requesting '{model_id}'."
                 )
-                return
 
             # Unload any existing model
             if self._model is not None:
@@ -197,13 +194,13 @@ class STTEngine:
         str
             The transcribed text.
         """
-        with self._lock:
-            current = self._current_model
-            model_is_loaded = self._model is not None
-        target_model = model_id or current or DEFAULT_MODEL
+        target_model = model_id or self._current_model or DEFAULT_MODEL
 
-        # Load or switch model if needed
-        if not model_is_loaded or current != target_model:
+        # Load or switch model if needed (check under lock to avoid TOCTOU race)
+        with self._lock:
+            needs_load = self._model is None or self._current_model != target_model
+
+        if needs_load:
             self.load(target_model)
 
         logger.info("STTEngine: transcribing %s (model=%s, language=%s)", audio_path, self._current_model, language)
@@ -216,7 +213,7 @@ class STTEngine:
             dtype = self._dtype
 
         if model is None or processor is None:
-            raise RuntimeError("STT model failed to load. Check logs for details.")
+            raise RuntimeError("STT model is not available. It may have been unloaded during the request.")
 
         # Load audio with librosa (avoids torchcodec/FFmpeg issues)
         audio_array, _ = librosa.load(audio_path, sr=WHISPER_SAMPLE_RATE, mono=True)

@@ -1,8 +1,12 @@
+import logging
+
 import numpy as np
 import soundfile as sf
 from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
+
+logger = logging.getLogger(__name__)
 
 from app.config import PROFILES_DIR, GENERATIONS_DIR, TRANSCRIPTIONS_DIR
 
@@ -75,4 +79,5 @@ async def get_waveform(audio_type: str, item_id: str, filename: str):
 
         return {"waveform": waveform, "duration": len(data) / sr, "sample_rate": sr}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to extract waveform: {str(e)}")
+        logger.error("Failed to extract waveform for %s/%s/%s: %s", audio_type, item_id, filename, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to extract waveform.")
