@@ -71,9 +71,15 @@ async def transcribe_audio(
     tmp_path: Optional[str] = None
     try:
         with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-            tmp.write(content)
             tmp_path = tmp.name
+            tmp.write(content)
     except Exception as exc:
+        if tmp_path:
+            try:
+                Path(tmp_path).unlink(missing_ok=True)
+            except Exception:
+                pass
+            tmp_path = None
         logger.error("Failed to save uploaded audio: %s", exc)
         raise HTTPException(status_code=400, detail="Failed to process uploaded audio file.")
 
