@@ -134,7 +134,8 @@ async def transcribe_audio(
 
         return record
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        logger.warning("STT transcription rejected: %s", exc)
+        raise HTTPException(status_code=400, detail="Invalid model or audio input.")
     except HTTPException:
         raise
     except Exception as exc:

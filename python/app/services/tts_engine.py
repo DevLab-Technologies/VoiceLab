@@ -201,14 +201,16 @@ class HabibiEngine(BaseTTSEngine):
                 vocab_file=vocab_file,
             )
 
-            self._loaded = True
-            self._loading = False
+            with self._lock:
+                self._loaded = True
+                self._loading = False
             logger.info("HabibiEngine: model loaded successfully.")
 
         except Exception as exc:
             logger.error("HabibiEngine: failed to load model: %s", exc, exc_info=True)
-            self._error = str(exc)
-            self._loading = False
+            with self._lock:
+                self._error = str(exc)
+                self._loading = False
 
     def generate(
         self,
@@ -246,6 +248,7 @@ class HabibiEngine(BaseTTSEngine):
         if not self._loaded:
             raise RuntimeError("HabibiEngine is not loaded. Call start_loading() first.")
 
+        import torch  # type: ignore
         import torchaudio  # type: ignore
         from f5_tts.infer.utils_infer import preprocess_ref_audio_text  # type: ignore
         from habibi_tts.infer.utils_infer import infer_process  # type: ignore
@@ -262,8 +265,6 @@ class HabibiEngine(BaseTTSEngine):
                 f"Reference audio is too short ({ref_duration:.1f}s). "
                 f"Please record at least {MIN_REF_DURATION_SEC:.0f} seconds."
             )
-
-        import torch  # type: ignore
 
         # Trim reference audio if it exceeds the model's context window.
         # The HabibiTTS chunking formula uses (22 - ref_duration) which goes
@@ -303,14 +304,15 @@ class HabibiEngine(BaseTTSEngine):
         silence = torch.zeros(1, silence_samples, dtype=audio_info.dtype)
         audio_info = torch.cat([audio_info, silence], dim=-1)
 
-        # Always write modified audio (with silence appended) to a temp file
-        tmp_ref_audio_file = tempfile.NamedTemporaryFile(
-            suffix=".wav", delete=False
-        )
-        torchaudio.save(tmp_ref_audio_file.name, audio_info, sr)
-        effective_ref_path = tmp_ref_audio_file.name
-
         try:
+            # Write modified audio (with silence appended) to a temp file
+            tmp_ref_audio_file = tempfile.NamedTemporaryFile(
+                suffix=".wav", delete=False
+            )
+            tmp_ref_audio_file.close()
+            torchaudio.save(tmp_ref_audio_file.name, audio_info, sr)
+            effective_ref_path = tmp_ref_audio_file.name
+
             # Ensure ref_text ends with "." so the model recognises the
             # boundary between reference and generated speech.
             if ref_text and not ref_text.rstrip().endswith((".", "!", "?", "؟")):
@@ -356,7 +358,7 @@ class HabibiEngine(BaseTTSEngine):
 
             return self._save_audio(audio_data, final_sample_rate)
         finally:
-            # Clean up temporary trimmed audio file
+            # Clean up temporary audio file
             if tmp_ref_audio_file is not None:
                 try:
                     os.unlink(tmp_ref_audio_file.name)
@@ -365,11 +367,12 @@ class HabibiEngine(BaseTTSEngine):
 
     def unload(self) -> None:
         """Release model and vocoder references so memory can be reclaimed."""
-        self._model = None
-        self._vocoder = None
-        self._loaded = False
-        self._loading = False
-        self._error = None
+        with self._lock:
+            self._model = None
+            self._vocoder = None
+            self._loaded = False
+            self._loading = False
+            self._error = None
         logger.info("HabibiEngine: unloaded.")
 
     # ------------------------------------------------------------------

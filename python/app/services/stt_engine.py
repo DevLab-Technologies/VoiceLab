@@ -194,10 +194,9 @@ class STTEngine:
         str
             The transcribed text.
         """
-        target_model = model_id or self._current_model or DEFAULT_MODEL
-
         # Load or switch model if needed (check under lock to avoid TOCTOU race)
         with self._lock:
+            target_model = model_id or self._current_model or DEFAULT_MODEL
             needs_load = self._model is None or self._current_model != target_model
 
         if needs_load:
