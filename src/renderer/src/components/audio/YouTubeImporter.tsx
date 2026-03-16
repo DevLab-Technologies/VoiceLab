@@ -3,12 +3,25 @@ import { Link2, Loader2, Play, Download, Clock, User, AlertCircle } from 'lucide
 import { fetchVideoInfo, extractAudio, type VideoInfo } from '../../api/youtube'
 import { extractApiError } from '../../lib/utils'
 
-type State = 'idle' | 'loading-info' | 'preview' | 'extracting' | 'done' | 'error'
+type YTState = 'idle' | 'loading-info' | 'preview' | 'extracting' | 'done' | 'error'
 
 interface YouTubeImporterProps {
   onExtracted: (blob: Blob, metadata: { title: string; duration: number }) => void
   maxDuration?: number
   enableTrimming?: boolean
+  // Optional controlled state — when provided, component uses external state
+  // instead of local useState, so state persists across navigation
+  persistedState?: {
+    url: string
+    setUrl: (url: string) => void
+    state: YTState
+    setState: (state: YTState) => void
+    info: VideoInfo | null
+    setInfo: (info: VideoInfo | null) => void
+    error: string
+    setError: (error: string) => void
+    reset: () => void
+  }
 }
 
 function formatDuration(seconds: number): string {
@@ -21,11 +34,29 @@ export default function YouTubeImporter({
   onExtracted,
   maxDuration,
   enableTrimming = false,
+  persistedState,
 }: YouTubeImporterProps) {
-  const [url, setUrl] = useState('')
-  const [state, setState] = useState<State>('idle')
-  const [info, setInfo] = useState<VideoInfo | null>(null)
-  const [error, setError] = useState('')
+  // Local state fallback when no persisted state is provided
+  const [localUrl, setLocalUrl] = useState('')
+  const [localState, setLocalState] = useState<YTState>('idle')
+  const [localInfo, setLocalInfo] = useState<VideoInfo | null>(null)
+  const [localError, setLocalError] = useState('')
+
+  // Use persisted state if provided, otherwise local
+  const url = persistedState?.url ?? localUrl
+  const setUrl = persistedState?.setUrl ?? setLocalUrl
+  const state = persistedState?.state ?? localState
+  const setState = persistedState?.setState ?? setLocalState
+  const info = persistedState?.info ?? localInfo
+  const setInfo = persistedState?.setInfo ?? setLocalInfo
+  const error = persistedState?.error ?? localError
+  const setError = persistedState?.setError ?? setLocalError
+  const resetState = persistedState?.reset ?? (() => {
+    setLocalState('idle')
+    setLocalInfo(null)
+    setLocalError('')
+  })
+
   const [startSec, setStartSec] = useState<number>(0)
   const [endSec, setEndSec] = useState<number>(15)
 
@@ -70,9 +101,7 @@ export default function YouTubeImporter({
   }
 
   const handleReset = () => {
-    setState('idle')
-    setInfo(null)
-    setError('')
+    resetState()
   }
 
   return (

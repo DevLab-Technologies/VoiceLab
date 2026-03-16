@@ -15,7 +15,9 @@ export default function STTPage() {
     sttModels, fetchSttModels,
     sttTranscribing, sttResult, setSttResult,
     sttAudioBlob, sttAudioSource, setSttAudioSource,
-    setSttAudioBlob, transcribe, stopTranscription, clearSttSession
+    setSttAudioBlob, transcribe, stopTranscription, clearSttSession,
+    ytUrl, ytState, ytInfo, ytError,
+    setYtUrl, setYtState, setYtInfo, setYtError, resetYtState
   } = useAppStore()
 
   const [copied, setCopied] = useState(false)
@@ -108,7 +110,20 @@ export default function STTPage() {
           ) : sttAudioSource === 'import' ? (
             <AudioImporter onImported={handleImport} />
           ) : (
-            <YouTubeImporter onExtracted={handleYouTubeExtracted} />
+            <YouTubeImporter
+              onExtracted={handleYouTubeExtracted}
+              persistedState={{
+                url: ytUrl,
+                setUrl: setYtUrl,
+                state: ytState,
+                setState: setYtState,
+                info: ytInfo,
+                setInfo: setYtInfo,
+                error: ytError,
+                setError: setYtError,
+                reset: resetYtState,
+              }}
+            />
           )}
         </div>
 
