@@ -28,6 +28,9 @@ MAX_REF_DURATION_HABIBI = 12.0
 # Silence appended to reference audio to prevent the last phrase from leaking
 # into generated output (see F5-TTS issue #85).
 TRAILING_SILENCE_SEC = 1.0
+# Effective cap for speech content: after appending silence the total must
+# stay within MAX_REF_DURATION_HABIBI.
+_MAX_SPEECH_DURATION = MAX_REF_DURATION_HABIBI - TRAILING_SILENCE_SEC
 
 # Arabic punctuation → Latin equivalents so chunk_text() can split properly.
 # The upstream regex only splits on Latin/CJK punctuation, missing Arabic marks.
@@ -278,17 +281,17 @@ class HabibiEngine(BaseTTSEngine):
         # negative for long audio, breaking text chunking completely.
         tmp_ref_audio_file = None
 
-        if ref_duration > MAX_REF_DURATION_HABIBI:
+        if ref_duration > _MAX_SPEECH_DURATION:
             logger.warning(
                 "HabibiEngine: ref audio (%.2fs) exceeds max (%.1fs), trimming",
                 ref_duration,
-                MAX_REF_DURATION_HABIBI,
+                _MAX_SPEECH_DURATION,
             )
-            max_samples = int(MAX_REF_DURATION_HABIBI * sr)
+            max_samples = int(_MAX_SPEECH_DURATION * sr)
             audio_info = audio_info[:, :max_samples]
 
             # Proportionally trim reference text to match trimmed audio
-            trim_ratio = MAX_REF_DURATION_HABIBI / ref_duration
+            trim_ratio = _MAX_SPEECH_DURATION / ref_duration
             trimmed_len = max(10, int(len(ref_text) * trim_ratio))
             # Find the last word/sentence boundary within the trimmed range
             truncated = ref_text[:trimmed_len]
@@ -300,7 +303,7 @@ class HabibiEngine(BaseTTSEngine):
             ref_text = truncated
             logger.info(
                 "HabibiEngine: trimmed ref to %.1fs, ref_text_len=%d",
-                MAX_REF_DURATION_HABIBI,
+                _MAX_SPEECH_DURATION,
                 len(ref_text),
             )
 
