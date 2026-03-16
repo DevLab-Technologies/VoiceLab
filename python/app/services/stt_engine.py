@@ -20,6 +20,10 @@ from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor  # type: ignor
 
 logger = logging.getLogger(__name__)
 
+
+class ModelLoadingError(RuntimeError):
+    """Raised when a model operation is attempted while another load is in progress."""
+
 # Supported Whisper models (id -> display metadata).
 # This is the single source of truth — the frontend fetches from /stt/models.
 WHISPER_MODELS = [
@@ -130,7 +134,7 @@ class STTEngine:
             if self._current_model == model_id and self._model is not None:
                 return  # already loaded
             if self._loading:
-                raise RuntimeError(
+                raise ModelLoadingError(
                     f"Model is currently loading. Please wait before requesting '{model_id}'."
                 )
 
@@ -332,10 +336,14 @@ class STTEngine:
         except Exception:
             pass
 
+        with self._lock:
+            current = self._current_model
+            model_loaded = self._model is not None
+
         results = []
         for m in WHISPER_MODELS:
             downloaded = m["id"] in cached_repos
-            loaded = self._current_model == m["id"] and self._model is not None
+            loaded = current == m["id"] and model_loaded
             results.append({
                 **m,
                 "status": "loaded" if loaded else "downloaded" if downloaded else "not_downloaded",

@@ -21,7 +21,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from app.config import TRANSCRIPTIONS_DIR
 from app.services.profile_store import _safe_subdir, profile_store
-from app.services.stt_engine import stt_engine, WHISPER_MODEL_IDS
+from app.services.stt_engine import stt_engine, ModelLoadingError, WHISPER_MODEL_IDS
 
 logger = logging.getLogger(__name__)
 
@@ -136,11 +136,8 @@ async def transcribe_audio(
     except ValueError as exc:
         logger.warning("STT transcription rejected: %s", exc)
         raise HTTPException(status_code=400, detail="Invalid model or audio input.")
-    except RuntimeError as exc:
-        if "currently loading" in str(exc):
-            raise HTTPException(status_code=503, detail="STT model is currently loading. Please retry.")
-        logger.error("STT transcription failed: %s", exc, exc_info=True)
-        raise HTTPException(status_code=500, detail="Transcription failed. Check server logs for details.")
+    except ModelLoadingError:
+        raise HTTPException(status_code=503, detail="STT model is currently loading. Please retry.")
     except HTTPException:
         raise
     except Exception as exc:

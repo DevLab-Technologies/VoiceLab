@@ -250,6 +250,8 @@ class HabibiEngine(BaseTTSEngine):
         with self._lock:
             if not self._loaded:
                 raise RuntimeError("HabibiEngine is not loaded. Call start_loading() first.")
+            model = self._model
+            vocoder = self._vocoder
 
         import torch  # type: ignore
         import torchaudio  # type: ignore
@@ -303,7 +305,7 @@ class HabibiEngine(BaseTTSEngine):
         # Append trailing silence to prevent the last phrase of ref_text
         # from leaking into generated output (F5-TTS issue #85).
         silence_samples = int(TRAILING_SILENCE_SEC * sr)
-        silence = torch.zeros(1, silence_samples, dtype=audio_info.dtype)
+        silence = torch.zeros(audio_info.shape[0], silence_samples, dtype=audio_info.dtype)
         audio_info = torch.cat([audio_info, silence], dim=-1)
 
         try:
@@ -350,8 +352,8 @@ class HabibiEngine(BaseTTSEngine):
                 ref_audio,
                 ref_text_processed,
                 gen_text,
-                self._model,
-                self._vocoder,
+                model,
+                vocoder,
                 dialect_id=dialect_id,
                 speed=speed,
                 nfe_step=nfe_step,
