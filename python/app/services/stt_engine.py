@@ -209,14 +209,15 @@ class STTEngine:
         if needs_load:
             self.load(target_model)
 
-        logger.info("STTEngine: transcribing %s (model=%s, language=%s)", audio_path, self._current_model, language)
-
         # Snapshot references under lock so inference is thread-safe
         with self._lock:
             model = self._model
             processor = self._processor
             device = self._device
             dtype = self._dtype
+            current = self._current_model
+
+        logger.info("STTEngine: transcribing %s (model=%s, language=%s)", audio_path, current, language)
 
         if model is None or processor is None:
             raise RuntimeError("STT model is not available. It may have been unloaded during the request.")

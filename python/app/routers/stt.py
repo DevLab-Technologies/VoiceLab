@@ -203,7 +203,7 @@ async def delete_stt_model(model_id: str):
 
     # Unload if currently loaded
     if stt_engine.current_model == model_id:
-        stt_engine.unload()
+        await asyncio.to_thread(stt_engine.unload)
 
     try:
         await asyncio.to_thread(stt_engine.delete_model, model_id)
