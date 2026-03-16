@@ -199,10 +199,11 @@ class STTEngine:
         """
         with self._lock:
             current = self._current_model
+            model_is_loaded = self._model is not None
         target_model = model_id or current or DEFAULT_MODEL
 
         # Load or switch model if needed
-        if self._model is None or current != target_model:
+        if not model_is_loaded or current != target_model:
             self.load(target_model)
 
         logger.info("STTEngine: transcribing %s (model=%s, language=%s)", audio_path, self._current_model, language)

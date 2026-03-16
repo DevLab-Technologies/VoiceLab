@@ -1,20 +1,15 @@
-import axios from 'axios'
 import type { Profile } from '../types/profile'
 import type { DialectCode } from '../types/dialect'
 import type { ModelId } from '../types/model'
-import { getBaseURL } from './client'
-
-function getClient() {
-  return axios.create({ baseURL: `${getBaseURL()}/api`, timeout: 30000 })
-}
+import { apiClient } from './client'
 
 export async function fetchProfiles(): Promise<Profile[]> {
-  const res = await getClient().get('/profiles')
+  const res = await apiClient.get('/profiles')
   return res.data
 }
 
 export async function fetchProfile(id: string): Promise<Profile> {
-  const res = await getClient().get(`/profiles/${id}`)
+  const res = await apiClient.get(`/profiles/${id}`)
   return res.data
 }
 
@@ -35,7 +30,7 @@ export async function createProfile(
   formData.append('ref_text', refText)
   formData.append('ref_audio', audioBlob, audioFilename)
 
-  const res = await getClient().post('/profiles', formData, {
+  const res = await apiClient.post('/profiles', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
     timeout: 60000
   })
@@ -46,10 +41,10 @@ export async function updateProfile(
   id: string,
   data: { name?: string; model?: ModelId; dialect?: DialectCode; language?: string; ref_text?: string }
 ): Promise<Profile> {
-  const res = await getClient().put(`/profiles/${id}`, data)
+  const res = await apiClient.put(`/profiles/${id}`, data)
   return res.data
 }
 
 export async function deleteProfile(id: string): Promise<void> {
-  await getClient().delete(`/profiles/${id}`)
+  await apiClient.delete(`/profiles/${id}`)
 }

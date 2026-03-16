@@ -107,12 +107,11 @@ async def extract_audio(
             raise ValueError("Downloaded audio file not found")
 
         # Convert to 24kHz mono WAV with optional trimming.
-        # Place -ss before -i for fast keyframe seeking, then use
-        # -ss 0 after -i for sample-accurate trim from that point.
+        # Place -ss after -i for sample-accurate seeking.
         ffmpeg_args = ["ffmpeg", "-y"]
+        ffmpeg_args.extend(["-i", str(downloaded)])
         if start_sec is not None:
             ffmpeg_args.extend(["-ss", str(start_sec)])
-        ffmpeg_args.extend(["-i", str(downloaded)])
         if end_sec is not None:
             duration = (end_sec - start_sec) if start_sec is not None else end_sec
             ffmpeg_args.extend(["-t", str(duration)])

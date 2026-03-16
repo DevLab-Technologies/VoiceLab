@@ -9,6 +9,7 @@ persisting transcription history.
 import asyncio
 import logging
 import shutil
+import subprocess
 import tempfile
 import time
 import uuid as _uuid
@@ -107,9 +108,16 @@ async def transcribe_audio(
         trans_dir = _safe_subdir(TRANSCRIPTIONS_DIR, transcription_id)
         trans_dir.mkdir(parents=True, exist_ok=True)
 
-        # Copy source audio to transcription directory
+        # Convert source audio to WAV for consistent playback
         dest_audio = trans_dir / "source_audio.wav"
-        shutil.copy2(tmp_path, str(dest_audio))
+        convert_result = subprocess.run(
+            ["ffmpeg", "-y", "-i", tmp_path,
+             "-ar", "16000", "-ac", "1", "-f", "wav", str(dest_audio)],
+            capture_output=True, timeout=30,
+        )
+        if convert_result.returncode != 0:
+            # Fall back to raw copy if ffmpeg unavailable
+            shutil.copy2(tmp_path, str(dest_audio))
 
         # Get audio duration
         try:

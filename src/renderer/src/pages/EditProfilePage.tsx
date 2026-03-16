@@ -39,17 +39,21 @@ export default function EditProfilePage() {
   }, [])
 
   useEffect(() => {
-    if (profile) {
-      setName(profile.name)
-      const profileModel = (profile.model || 'habibi-tts') as ModelId
-      setModel(profileModel)
-      setOriginalModel(profileModel)
-      if (profile.dialect) setDialect(profile.dialect)
-      if (profile.language) setLanguage(profile.language)
-      setRefText(profile.ref_text)
-      setLoading(false)
+    if (profiles.length === 0) return
+    if (!profile) {
+      addToast('Profile not found', 'error')
+      navigate('/profiles')
+      return
     }
-  }, [profile])
+    setName(profile.name)
+    const profileModel = (profile.model || 'habibi-tts') as ModelId
+    setModel(profileModel)
+    setOriginalModel(profileModel)
+    if (profile.dialect) setDialect(profile.dialect)
+    if (profile.language) setLanguage(profile.language)
+    setRefText(profile.ref_text)
+    setLoading(false)
+  }, [profile, profiles.length])
 
   const handleSave = async () => {
     if (!id || !name.trim() || !refText.trim()) return
