@@ -113,8 +113,6 @@ async def extract_audio(
         if start_sec is not None:
             ffmpeg_args.extend(["-ss", str(start_sec)])
         ffmpeg_args.extend(["-i", str(downloaded)])
-        if start_sec is not None:
-            ffmpeg_args.extend(["-ss", "0"])
         if end_sec is not None:
             duration = (end_sec - start_sec) if start_sec is not None else end_sec
             ffmpeg_args.extend(["-t", str(duration)])

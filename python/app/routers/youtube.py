@@ -1,8 +1,9 @@
 from urllib.parse import quote
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
+from starlette.background import BackgroundTask
 
 from app.services.youtube_service import (
     cleanup_temp_file,
@@ -41,13 +42,11 @@ class ExtractAudioWithInfoRequest(BaseModel):
 
 
 @router.post("/extract-audio")
-async def extract_video_audio(req: ExtractAudioWithInfoRequest, bg: BackgroundTasks):
+async def extract_video_audio(req: ExtractAudioWithInfoRequest):
     try:
         audio_path = await extract_audio(req.url, req.start_sec, req.end_sec)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-
-    bg.add_task(cleanup_temp_file, audio_path)
 
     return FileResponse(
         path=str(audio_path),
@@ -57,4 +56,5 @@ async def extract_video_audio(req: ExtractAudioWithInfoRequest, bg: BackgroundTa
             "X-Video-Title": quote(req.title),
             "X-Video-Duration": str(req.duration),
         },
+        background=BackgroundTask(cleanup_temp_file, audio_path),
     )

@@ -18,7 +18,7 @@ export function getTranscriptionAudioUrl(transcriptionId: string): string {
 }
 
 export async function fetchWaveform(
-  type: 'profiles' | 'generations',
+  type: 'profiles' | 'generations' | 'transcriptions',
   id: string,
   filename: string
 ): Promise<{ waveform: number[]; duration: number }> {

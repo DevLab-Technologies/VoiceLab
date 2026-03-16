@@ -61,14 +61,14 @@ async def transcribe_audio(
 
     # Save uploaded file to a temp location
     suffix = Path(audio.filename or "audio.wav").suffix or ".wav"
+    content = await audio.read()
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large. Maximum upload size is {MAX_UPLOAD_BYTES // (1024 * 1024)} MB.",
+        )
     try:
         with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-            content = await audio.read()
-            if len(content) > MAX_UPLOAD_BYTES:
-                raise HTTPException(
-                    status_code=413,
-                    detail=f"File too large. Maximum upload size is {MAX_UPLOAD_BYTES // (1024 * 1024)} MB.",
-                )
             tmp.write(content)
             tmp_path = tmp.name
     except Exception as exc:

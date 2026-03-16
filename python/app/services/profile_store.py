@@ -31,7 +31,7 @@ class ProfileStore:
         # Migrate: ensure transcriptions key exists for older data files
         if "transcriptions" not in self._data:
             self._data["transcriptions"] = []
-            self._save()
+            self._save_unlocked()
 
     def _load(self):
         with self._lock:

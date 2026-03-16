@@ -45,7 +45,7 @@ export async function fetchSTTModels(): Promise<STTModelInfo[]> {
 }
 
 export async function downloadSTTModel(modelId: string): Promise<{ status: string }> {
-  const res = await apiClient.post(`/stt/models/${modelId}/download`)
+  const res = await apiClient.post(`/stt/models/${modelId}/download`, {}, { timeout: 0 })
   return res.data
 }
 
