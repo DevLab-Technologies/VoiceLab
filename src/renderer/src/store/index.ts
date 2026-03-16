@@ -89,9 +89,9 @@ interface AppState {
   sttTranscribing: boolean
   sttResult: string
   sttAudioBlob: Blob | null
-  sttAudioSource: 'record' | 'import'
-  setSttAudioBlob: (blob: Blob | null, source: 'record' | 'import') => void
-  setSttAudioSource: (source: 'record' | 'import') => void
+  sttAudioSource: 'record' | 'import' | 'youtube'
+  setSttAudioBlob: (blob: Blob | null, source: 'record' | 'import' | 'youtube') => void
+  setSttAudioSource: (source: 'record' | 'import' | 'youtube') => void
   setSttResult: (text: string) => void
   transcribe: () => Promise<void>
   stopTranscription: () => void
