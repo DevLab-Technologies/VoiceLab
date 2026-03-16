@@ -179,7 +179,7 @@ async def download_stt_model(model_id: str):
     Pre-download a Whisper model to the local cache.
     """
     if model_id not in WHISPER_MODEL_IDS:
-        raise HTTPException(status_code=400, detail=f"Unknown model '{model_id}'")
+        raise HTTPException(status_code=400, detail="Unknown model.")
 
     if stt_engine.is_model_downloaded(model_id):
         return {"status": "already_downloaded"}
@@ -199,7 +199,7 @@ async def delete_stt_model(model_id: str):
     Remove a Whisper model from the local cache.
     """
     if model_id not in WHISPER_MODEL_IDS:
-        raise HTTPException(status_code=400, detail=f"Unknown model '{model_id}'")
+        raise HTTPException(status_code=400, detail="Unknown model.")
 
     # Unload if currently loaded
     if stt_engine.current_model == model_id:

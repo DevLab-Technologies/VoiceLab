@@ -135,7 +135,7 @@ class ProfileStore:
         with self._lock:
             self._data["profiles"].append(profile)
             self._save_unlocked()
-        return profile
+        return copy.deepcopy(profile)
 
     def update(self, profile_id: str, update) -> Optional[dict]:
         with self._lock:
@@ -209,7 +209,7 @@ class ProfileStore:
         with self._lock:
             self._data["generations"].append(generation)
             self._save_unlocked()
-        return generation
+        return copy.deepcopy(generation)
 
     def list_generations(self) -> List[dict]:
         with self._lock:
@@ -260,7 +260,7 @@ class ProfileStore:
         with self._lock:
             self._data["transcriptions"].append(transcription)
             self._save_unlocked()
-        return transcription
+        return copy.deepcopy(transcription)
 
     def list_transcriptions(self) -> List[dict]:
         with self._lock:

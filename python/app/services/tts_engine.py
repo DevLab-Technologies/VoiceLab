@@ -170,7 +170,7 @@ class HabibiEngine(BaseTTSEngine):
             from f5_tts.infer.utils_infer import load_vocoder, load_model  # type: ignore
             from f5_tts.model import DiT  # type: ignore
 
-            self._vocoder = load_vocoder(vocoder_name="vocos", is_local=False)
+            vocoder_obj = load_vocoder(vocoder_name="vocos", is_local=False)
             logger.info("[habibi 1/3] Vocoder loaded.")
 
             logger.info("[habibi 2/3] Downloading model checkpoint (first run only)…")
@@ -195,7 +195,7 @@ class HabibiEngine(BaseTTSEngine):
                 attn_mask_enabled=False,
                 checkpoint_activations=False,
             )
-            self._model = load_model(
+            model_obj = load_model(
                 model_cls=DiT,
                 model_cfg=model_arch,
                 ckpt_path=ckpt_file,
@@ -204,6 +204,8 @@ class HabibiEngine(BaseTTSEngine):
             )
 
             with self._lock:
+                self._vocoder = vocoder_obj
+                self._model = model_obj
                 self._loaded = True
                 self._loading = False
             logger.info("HabibiEngine: model loaded successfully.")
