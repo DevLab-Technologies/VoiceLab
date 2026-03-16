@@ -37,6 +37,7 @@ async def get_video_info(url: str) -> dict:
         _run_yt_dlp,
         [
             "--no-download",
+            "--no-call-home",
             "--print", "%(title)s\n%(duration)s\n%(channel)s",
             "--no-playlist",
             "--", url,
@@ -86,6 +87,7 @@ async def extract_audio(
         dl_args = [
             "-x",
             "--audio-format", "wav",
+            "--no-call-home",
             "--no-playlist",
             "-o", str(raw_path),
             "--", url,

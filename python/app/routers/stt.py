@@ -19,12 +19,14 @@ import soundfile as sf
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from app.config import TRANSCRIPTIONS_DIR
-from app.services.profile_store import profile_store
+from app.services.profile_store import _safe_subdir, profile_store
 from app.services.stt_engine import stt_engine, WHISPER_MODEL_IDS
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["stt"])
+
+MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # 100 MB
 
 
 @router.post("/stt/transcribe")
@@ -62,6 +64,11 @@ async def transcribe_audio(
     try:
         with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
             content = await audio.read()
+            if len(content) > MAX_UPLOAD_BYTES:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"File too large. Maximum upload size is {MAX_UPLOAD_BYTES // (1024 * 1024)} MB.",
+                )
             tmp.write(content)
             tmp_path = tmp.name
     except Exception as exc:
@@ -97,7 +104,7 @@ async def transcribe_audio(
     # Save mode: persist source audio and transcription record
     try:
         transcription_id = str(_uuid.uuid4())
-        trans_dir = TRANSCRIPTIONS_DIR / transcription_id
+        trans_dir = _safe_subdir(TRANSCRIPTIONS_DIR, transcription_id)
         trans_dir.mkdir(parents=True, exist_ok=True)
 
         # Copy source audio to transcription directory
