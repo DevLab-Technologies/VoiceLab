@@ -10,6 +10,7 @@ import * as audioApi from '../api/audio'
 import * as modelsApi from '../api/models'
 import * as sttApi from '../api/stt'
 import type { STTModelInfo, Transcription } from '../api/stt'
+import type { VideoInfo } from '../api/youtube'
 
 interface Toast {
   id: string
@@ -89,13 +90,24 @@ interface AppState {
   sttTranscribing: boolean
   sttResult: string
   sttAudioBlob: Blob | null
-  sttAudioSource: 'record' | 'import'
-  setSttAudioBlob: (blob: Blob | null, source: 'record' | 'import') => void
-  setSttAudioSource: (source: 'record' | 'import') => void
+  sttAudioSource: 'record' | 'import' | 'youtube'
+  setSttAudioBlob: (blob: Blob | null, source: 'record' | 'import' | 'youtube') => void
+  setSttAudioSource: (source: 'record' | 'import' | 'youtube') => void
   setSttResult: (text: string) => void
   transcribe: () => Promise<void>
   stopTranscription: () => void
   clearSttSession: () => void
+
+  // YouTube importer state (persistent across navigation)
+  ytUrl: string
+  ytState: 'idle' | 'loading-info' | 'preview' | 'extracting' | 'done' | 'error'
+  ytInfo: VideoInfo | null
+  ytError: string
+  setYtUrl: (url: string) => void
+  setYtState: (state: 'idle' | 'loading-info' | 'preview' | 'extracting' | 'done' | 'error') => void
+  setYtInfo: (info: VideoInfo | null) => void
+  setYtError: (error: string) => void
+  resetYtState: () => void
 
   // Transcription History
   transcriptions: Transcription[]
@@ -518,9 +530,24 @@ export const useAppStore = create<AppState>((set, get) => ({
       sttTranscribing: false,
       sttResult: '',
       sttAudioBlob: null,
-      sttAudioSource: 'record' as const
+      sttAudioSource: 'record' as const,
+      ytUrl: '',
+      ytState: 'idle' as const,
+      ytInfo: null,
+      ytError: '',
     })
   },
+
+  // YouTube importer state
+  ytUrl: '',
+  ytState: 'idle',
+  ytInfo: null,
+  ytError: '',
+  setYtUrl: (url) => set({ ytUrl: url }),
+  setYtState: (state) => set({ ytState: state }),
+  setYtInfo: (info) => set({ ytInfo: info }),
+  setYtError: (error) => set({ ytError: error }),
+  resetYtState: () => set({ ytState: 'idle' as const, ytInfo: null, ytError: '' }),
 
   // Transcription History
   transcriptions: [],

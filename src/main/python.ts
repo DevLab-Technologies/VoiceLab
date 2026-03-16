@@ -1,8 +1,10 @@
-import { ChildProcess, spawn } from 'child_process'
+import { ChildProcess, spawn, execFile } from 'child_process'
+import { promisify } from 'util'
 import { createServer } from 'net'
 import { join } from 'path'
 import { app } from 'electron'
-import { existsSync } from 'fs'
+import { existsSync, readFileSync, writeFileSync } from 'fs'
+import { createHash } from 'crypto'
 import http from 'http'
 
 let pythonProcess: ChildProcess | null = null
@@ -79,10 +81,62 @@ function healthCheck(port: number): Promise<boolean> {
   })
 }
 
+const execFileAsync = promisify(execFile)
+
+async function ensureVenv(pythonDir: string): Promise<string> {
+  const isWin = process.platform === 'win32'
+  const venvDir = join(pythonDir, '.venv')
+  const venvPython = isWin
+    ? join(venvDir, 'Scripts', 'python.exe')
+    : join(venvDir, 'bin', 'python3')
+
+  // Verify uv is available
+  try {
+    await execFileAsync('uv', ['--version'])
+  } catch {
+    throw new Error(
+      'uv is required for dev setup but was not found. Install it: https://docs.astral.sh/uv/getting-started/installation/'
+    )
+  }
+
+  if (!existsSync(venvPython)) {
+    console.log('Creating Python virtual environment...')
+    await execFileAsync('uv', ['venv', venvDir], { cwd: pythonDir })
+  }
+
+  // Sync dependencies only when requirements.txt has changed
+  const requirementsFile = join(pythonDir, 'requirements.txt')
+  const hashFile = join(venvDir, '.requirements-hash')
+  const currentHash = createHash('sha256').update(readFileSync(requirementsFile)).digest('hex')
+  const cachedHash = existsSync(hashFile) ? readFileSync(hashFile, 'utf-8').trim() : ''
+
+  if (currentHash !== cachedHash) {
+    console.log('Syncing Python dependencies...')
+    await execFileAsync('uv', ['pip', 'install', '-r', requirementsFile, '--python', venvPython], {
+      cwd: pythonDir,
+      timeout: 600000
+    })
+    writeFileSync(hashFile, currentHash)
+  } else {
+    console.log('Python dependencies up to date.')
+  }
+
+  return venvPython
+}
+
 export async function startPythonBackend(): Promise<number> {
   backendPort = await findFreePort()
   const pythonDir = getPythonDir()
-  const pythonBin = getPythonBin(pythonDir)
+
+  // In dev mode without a bundled runtime, ensure venv + deps are set up
+  const isDev = !app.isPackaged
+  const hasBundledRuntime = existsSync(join(pythonDir, 'python-runtime'))
+  let pythonBin: string
+  if (isDev && !hasBundledRuntime) {
+    pythonBin = await ensureVenv(pythonDir)
+  } else {
+    pythonBin = getPythonBin(pythonDir)
+  }
 
   console.log(`Starting Python backend on port ${backendPort}...`)
   console.log(`Python directory: ${pythonDir}`)

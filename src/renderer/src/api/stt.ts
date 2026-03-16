@@ -1,9 +1,4 @@
-import axios from 'axios'
-import { getBaseURL } from './client'
-
-function getClient() {
-  return axios.create({ baseURL: `${getBaseURL()}/api`, timeout: 300000 })
-}
+import { apiClient } from './client'
 
 export interface STTModelInfo {
   id: string
@@ -36,33 +31,34 @@ export async function transcribeAudio(
   if (language) formData.append('language', language)
   formData.append('save', save ? 'true' : 'false')
 
-  const res = await getClient().post('/stt/transcribe', formData, {
+  const res = await apiClient.post('/stt/transcribe', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 300000,
     signal
   })
   return res.data
 }
 
 export async function fetchSTTModels(): Promise<STTModelInfo[]> {
-  const res = await getClient().get('/stt/models')
+  const res = await apiClient.get('/stt/models')
   return res.data
 }
 
 export async function downloadSTTModel(modelId: string): Promise<{ status: string }> {
-  const res = await getClient().post(`/stt/models/${modelId}/download`)
+  const res = await apiClient.post(`/stt/models/${modelId}/download`, {}, { timeout: 0 })
   return res.data
 }
 
 export async function deleteSTTModel(modelId: string): Promise<{ status: string }> {
-  const res = await getClient().delete(`/stt/models/${modelId}`)
+  const res = await apiClient.delete(`/stt/models/${modelId}`)
   return res.data
 }
 
 export async function fetchTranscriptions(): Promise<Transcription[]> {
-  const res = await getClient().get('/stt/transcriptions')
+  const res = await apiClient.get('/stt/transcriptions')
   return res.data
 }
 
 export async function deleteTranscription(id: string): Promise<void> {
-  await getClient().delete(`/stt/transcriptions/${id}`)
+  await apiClient.delete(`/stt/transcriptions/${id}`)
 }

@@ -1,14 +1,12 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { FolderOpen, Trash2, Bug, AudioLines, RefreshCw, Loader2, CheckCircle, ArrowDownToLine } from 'lucide-react'
+import { FolderOpen, Bug, AudioLines, RefreshCw, Loader2, CheckCircle, ArrowDownToLine } from 'lucide-react'
 import Header from '../components/layout/Header'
-import Dialog from '../components/ui/Dialog'
 import STTModelSelector from '../components/stt/STTModelSelector'
 import { useAppStore } from '../store'
 
 export default function SettingsPage() {
   const {
-    addToast,
     backendReady,
     fetchSttModels,
     devMode,
@@ -24,17 +22,11 @@ export default function SettingsPage() {
   } = useAppStore()
 
   const [dataPath, setDataPath] = useState('')
-  const [showClear, setShowClear] = useState(false)
 
   useEffect(() => {
     window.api.getUserDataPath().then((p) => setDataPath(p))
     fetchSttModels()
   }, [fetchSttModels])
-
-  const handleClearData = () => {
-    addToast('Cache cleared', 'success')
-    setShowClear(false)
-  }
 
   return (
     <motion.div
@@ -149,13 +141,6 @@ export default function SettingsPage() {
             <FolderOpen className="w-4 h-4 shrink-0" />
             <span className="truncate font-mono text-xs">{dataPath}</span>
           </div>
-          <button
-            onClick={() => setShowClear(true)}
-            className="btn-danger flex items-center gap-2 text-sm"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            Clear Generated Audio Cache
-          </button>
         </div>
 
         {/* Developer */}
@@ -202,19 +187,6 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      <Dialog
-        open={showClear}
-        onClose={() => setShowClear(false)}
-        title="Clear Cache"
-        actions={
-          <>
-            <button onClick={() => setShowClear(false)} className="btn-secondary">Cancel</button>
-            <button onClick={handleClearData} className="btn-danger">Clear</button>
-          </>
-        }
-      >
-        <p>This will remove all generated audio files. Profiles will be preserved.</p>
-      </Dialog>
     </motion.div>
   )
 }

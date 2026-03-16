@@ -4,6 +4,7 @@ import { AudioLines, Loader2, Copy, Check, X, RotateCcw } from 'lucide-react'
 import Header from '../components/layout/Header'
 import AudioRecorder from '../components/audio/AudioRecorder'
 import AudioImporter from '../components/audio/AudioImporter'
+import YouTubeImporter from '../components/audio/YouTubeImporter'
 import STTModelSelector from '../components/stt/STTModelSelector'
 import { useAppStore } from '../store'
 
@@ -14,7 +15,9 @@ export default function STTPage() {
     sttModels, fetchSttModels,
     sttTranscribing, sttResult, setSttResult,
     sttAudioBlob, sttAudioSource, setSttAudioSource,
-    setSttAudioBlob, transcribe, stopTranscription, clearSttSession
+    setSttAudioBlob, transcribe, stopTranscription, clearSttSession,
+    ytUrl, ytState, ytInfo, ytError,
+    setYtUrl, setYtState, setYtInfo, setYtError, resetYtState
   } = useAppStore()
 
   const [copied, setCopied] = useState(false)
@@ -34,6 +37,10 @@ export default function STTPage() {
 
   const handleImport = (file: File) => {
     setSttAudioBlob(file, 'import')
+  }
+
+  const handleYouTubeExtracted = (blob: Blob) => {
+    setSttAudioBlob(blob, 'youtube')
   }
 
   const handleCopy = async () => {
@@ -88,12 +95,35 @@ export default function STTPage() {
             >
               Import
             </button>
+            <button
+              onClick={() => setSttAudioSource('youtube')}
+              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
+                sttAudioSource === 'youtube' ? 'bg-accent text-white' : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              YouTube
+            </button>
           </div>
 
           {sttAudioSource === 'record' ? (
             <AudioRecorder onRecorded={handleRecorded} />
-          ) : (
+          ) : sttAudioSource === 'import' ? (
             <AudioImporter onImported={handleImport} />
+          ) : (
+            <YouTubeImporter
+              onExtracted={handleYouTubeExtracted}
+              persistedState={{
+                url: ytUrl,
+                setUrl: setYtUrl,
+                state: ytState,
+                setState: setYtState,
+                info: ytInfo,
+                setInfo: setYtInfo,
+                error: ytError,
+                setError: setYtError,
+                reset: resetYtState,
+              }}
+            />
           )}
         </div>
 

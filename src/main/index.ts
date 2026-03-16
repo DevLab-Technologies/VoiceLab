@@ -39,36 +39,38 @@ function createWindow(): void {
 }
 
 // ── Auto-Updater ──────────────────────────────────────────────────────
-autoUpdater.autoDownload = false
-autoUpdater.autoInstallOnAppQuit = true
-
 function sendUpdateStatus(status: string, info?: Record<string, unknown>): void {
   mainWindow?.webContents.send('update-status', { status, ...info })
 }
 
-autoUpdater.on('checking-for-update', () => {
-  sendUpdateStatus('checking')
-})
+if (app.isPackaged) {
+  autoUpdater.autoDownload = false
+  autoUpdater.autoInstallOnAppQuit = true
 
-autoUpdater.on('update-available', (info) => {
-  sendUpdateStatus('available', { version: info.version })
-})
+  autoUpdater.on('checking-for-update', () => {
+    sendUpdateStatus('checking')
+  })
 
-autoUpdater.on('update-not-available', () => {
-  sendUpdateStatus('up-to-date')
-})
+  autoUpdater.on('update-available', (info) => {
+    sendUpdateStatus('available', { version: info.version })
+  })
 
-autoUpdater.on('download-progress', (progress) => {
-  sendUpdateStatus('downloading', { percent: Math.round(progress.percent) })
-})
+  autoUpdater.on('update-not-available', () => {
+    sendUpdateStatus('up-to-date')
+  })
 
-autoUpdater.on('update-downloaded', (info) => {
-  sendUpdateStatus('downloaded', { version: info.version })
-})
+  autoUpdater.on('download-progress', (progress) => {
+    sendUpdateStatus('downloading', { percent: Math.round(progress.percent) })
+  })
 
-autoUpdater.on('error', (err) => {
-  sendUpdateStatus('error', { message: err.message })
-})
+  autoUpdater.on('update-downloaded', (info) => {
+    sendUpdateStatus('downloaded', { version: info.version })
+  })
+
+  autoUpdater.on('error', (err) => {
+    sendUpdateStatus('error', { message: err.message })
+  })
+}
 
 // ── IPC Handlers ──────────────────────────────────────────────────────
 ipcMain.handle('get-backend-port', () => getBackendPort())
@@ -89,27 +91,33 @@ ipcMain.handle('get-user-data-path', () => app.getPath('userData'))
 
 ipcMain.handle('get-app-version', () => app.getVersion())
 
-ipcMain.handle('check-for-updates', async () => {
-  try {
-    await autoUpdater.checkForUpdates()
-    return { success: true }
-  } catch (err: any) {
-    return { success: false, error: err.message }
-  }
-})
+if (app.isPackaged) {
+  ipcMain.handle('check-for-updates', async () => {
+    try {
+      await autoUpdater.checkForUpdates()
+      return { success: true }
+    } catch (err: any) {
+      return { success: false, error: err.message }
+    }
+  })
 
-ipcMain.handle('download-update', async () => {
-  try {
-    await autoUpdater.downloadUpdate()
-    return { success: true }
-  } catch (err: any) {
-    return { success: false, error: err.message }
-  }
-})
+  ipcMain.handle('download-update', async () => {
+    try {
+      await autoUpdater.downloadUpdate()
+      return { success: true }
+    } catch (err: any) {
+      return { success: false, error: err.message }
+    }
+  })
 
-ipcMain.handle('install-update', () => {
-  autoUpdater.quitAndInstall()
-})
+  ipcMain.handle('install-update', () => {
+    autoUpdater.quitAndInstall()
+  })
+} else {
+  ipcMain.handle('check-for-updates', () => ({ success: false, error: 'Updates disabled in dev mode' }))
+  ipcMain.handle('download-update', () => ({ success: false, error: 'Updates disabled in dev mode' }))
+  ipcMain.handle('install-update', () => {})
+}
 
 // Set the app name for the Mac menu bar (shows "VoiceLab" instead of "Electron" in dev)
 if (process.platform === 'darwin') {

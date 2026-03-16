@@ -1,9 +1,5 @@
-import axios from 'axios'
+import { apiClient } from './client'
 import { getBaseURL } from './client'
-
-function getClient() {
-  return axios.create({ baseURL: `${getBaseURL()}/api`, timeout: 30000 })
-}
 
 export function getProfileAudioUrl(profileId: string): string {
   return `${getBaseURL()}/api/audio/profiles/${profileId}/ref_audio.wav`
@@ -18,11 +14,11 @@ export function getTranscriptionAudioUrl(transcriptionId: string): string {
 }
 
 export async function fetchWaveform(
-  type: 'profiles' | 'generations',
+  type: 'profiles' | 'generations' | 'transcriptions',
   id: string,
   filename: string
 ): Promise<{ waveform: number[]; duration: number }> {
-  const res = await getClient().get(`/audio/waveform/${type}/${id}/${filename}`)
+  const res = await apiClient.get(`/audio/waveform/${type}/${id}/${filename}`)
   return res.data
 }
 
@@ -31,6 +27,6 @@ export async function checkHealth(): Promise<{
   model_loaded: boolean
   model_status: string
 }> {
-  const res = await getClient().get('/health')
+  const res = await apiClient.get('/health')
   return res.data
 }

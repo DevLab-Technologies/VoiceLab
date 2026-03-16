@@ -18,3 +18,7 @@ TRANSCRIPTIONS_DIR.mkdir(parents=True, exist_ok=True)
 SAMPLE_RATE = 24000
 MAX_AUDIO_DURATION_SEC = 30
 SUPPORTED_AUDIO_FORMATS = {".wav", ".mp3", ".ogg", ".webm", ".flac", ".m4a"}
+
+# YouTube settings
+YOUTUBE_TEMP_DIR = DATA_DIR / "youtube_temp"
+MAX_YOUTUBE_DURATION_SEC = 600
