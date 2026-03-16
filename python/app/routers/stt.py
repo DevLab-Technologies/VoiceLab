@@ -136,6 +136,11 @@ async def transcribe_audio(
     except ValueError as exc:
         logger.warning("STT transcription rejected: %s", exc)
         raise HTTPException(status_code=400, detail="Invalid model or audio input.")
+    except RuntimeError as exc:
+        if "currently loading" in str(exc):
+            raise HTTPException(status_code=503, detail="STT model is currently loading. Please retry.")
+        logger.error("STT transcription failed: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail="Transcription failed. Check server logs for details.")
     except HTTPException:
         raise
     except Exception as exc:

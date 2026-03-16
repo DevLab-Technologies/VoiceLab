@@ -134,17 +134,19 @@ class HabibiEngine(BaseTTSEngine):
 
     @property
     def is_loaded(self) -> bool:
-        return self._loaded
+        with self._lock:
+            return self._loaded
 
     @property
     def loading_status(self) -> str:
-        if self._loaded:
-            return "ready"
-        if self._error:
-            return f"error: {self._error}"
-        if self._loading:
-            return "loading"
-        return "idle"
+        with self._lock:
+            if self._loaded:
+                return "ready"
+            if self._error:
+                return "error"
+            if self._loading:
+                return "loading"
+            return "idle"
 
     def start_loading(self) -> None:
         """Kick off model loading in a background thread (non-blocking)."""
@@ -245,8 +247,9 @@ class HabibiEngine(BaseTTSEngine):
             Classifier-free guidance strength (default: 2.0).
             Higher values make the output follow the input text more closely.
         """
-        if not self._loaded:
-            raise RuntimeError("HabibiEngine is not loaded. Call start_loading() first.")
+        with self._lock:
+            if not self._loaded:
+                raise RuntimeError("HabibiEngine is not loaded. Call start_loading() first.")
 
         import torch  # type: ignore
         import torchaudio  # type: ignore
@@ -270,7 +273,6 @@ class HabibiEngine(BaseTTSEngine):
         # The HabibiTTS chunking formula uses (22 - ref_duration) which goes
         # negative for long audio, breaking text chunking completely.
         tmp_ref_audio_file = None
-        effective_ref_path = ref_audio_path
 
         if ref_duration > MAX_REF_DURATION_HABIBI:
             logger.warning(

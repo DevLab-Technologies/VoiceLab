@@ -96,21 +96,24 @@ class STTEngine:
 
     @property
     def is_loaded(self) -> bool:
-        return self._model is not None
+        with self._lock:
+            return self._model is not None
 
     @property
     def current_model(self) -> Optional[str]:
-        return self._current_model
+        with self._lock:
+            return self._current_model
 
     @property
     def loading_status(self) -> str:
-        if self._model is not None:
-            return "ready"
-        if self._error:
-            return f"error: {self._error}"
-        if self._loading:
-            return "loading"
-        return "idle"
+        with self._lock:
+            if self._model is not None:
+                return "ready"
+            if self._error:
+                return "error"
+            if self._loading:
+                return "loading"
+            return "idle"
 
     def load(self, model_id: str = DEFAULT_MODEL) -> None:
         """
