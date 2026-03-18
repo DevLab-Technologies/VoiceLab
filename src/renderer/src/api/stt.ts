@@ -13,6 +13,7 @@ export interface Transcription {
   id: string
   text: string
   model: string
+  audio_path: string
   duration: number
   elapsed_seconds: number
   created_at: string

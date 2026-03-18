@@ -447,18 +447,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   downloadSttModel: async (modelId) => {
     try {
       await sttApi.downloadSTTModel(modelId)
-      // Update status after successful download
-      set({
-        sttModels: get().sttModels.map((m) =>
-          m.id === modelId ? { ...m, status: 'downloaded' as const } : m
-        )
-      })
       get().addToast(`${modelId.split('/').pop()} downloaded`, 'success')
-      // Refresh full status from backend
-      get().fetchSttModels()
+      await get().fetchSttModels()
     } catch (err: any) {
       get().addToast(err?.response?.data?.detail || 'Download failed', 'error')
-      get().fetchSttModels()
+      await get().fetchSttModels()
     }
   },
   deleteSttModel: async (modelId) => {

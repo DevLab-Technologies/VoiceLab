@@ -68,10 +68,10 @@ async def generate_speech(request: GenerateRequest):
             await asyncio.sleep(poll_interval)
             waited += poll_interval
             status = engine.loading_status
-            if status.startswith("error:"):
+            if status == "error":
                 raise HTTPException(
                     status_code=503,
-                    detail=f"Engine failed to load: {status}",
+                    detail="Engine failed to load. Check server logs for details.",
                 )
             if status == "not_installed":
                 raise HTTPException(

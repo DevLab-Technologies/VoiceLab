@@ -2,6 +2,7 @@ import json
 import uuid
 import shutil
 import logging
+import copy
 import threading
 from pathlib import Path
 from datetime import datetime, timezone
@@ -26,12 +27,8 @@ def _safe_subdir(base: Path, name: str) -> Path:
 class ProfileStore:
     def __init__(self):
         self._data = {"profiles": [], "generations": [], "transcriptions": []}
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._load()
-        # Migrate: ensure transcriptions key exists for older data files
-        if "transcriptions" not in self._data:
-            self._data["transcriptions"] = []
-            self._save_unlocked()
 
     def _load(self):
         with self._lock:
@@ -40,24 +37,26 @@ class ProfileStore:
                     self._data = json.load(f)
             else:
                 self._save_unlocked()
+            # Migrate: ensure transcriptions key exists for older data files
+            if "transcriptions" not in self._data:
+                self._data["transcriptions"] = []
+                self._save_unlocked()
 
     def _save_unlocked(self):
         """Write data to disk. Caller must hold ``_lock``."""
         with open(DB_FILE, "w", encoding="utf-8") as f:
             json.dump(self._data, f, ensure_ascii=False, indent=2)
 
-    def _save(self):
-        with self._lock:
-            self._save_unlocked()
-
     def list_all(self) -> List[dict]:
-        return sorted(self._data["profiles"], key=lambda p: p["created_at"], reverse=True)
+        with self._lock:
+            return sorted(copy.deepcopy(self._data["profiles"]), key=lambda p: p["created_at"], reverse=True)
 
     def get(self, profile_id: str) -> Optional[dict]:
-        for p in self._data["profiles"]:
-            if p["id"] == profile_id:
-                return p
-        return None
+        with self._lock:
+            for p in self._data["profiles"]:
+                if p["id"] == profile_id:
+                    return copy.deepcopy(p)
+            return None
 
     async def create(
         self,
@@ -136,7 +135,7 @@ class ProfileStore:
         with self._lock:
             self._data["profiles"].append(profile)
             self._save_unlocked()
-        return profile
+        return copy.deepcopy(profile)
 
     def update(self, profile_id: str, update) -> Optional[dict]:
         with self._lock:
@@ -149,7 +148,7 @@ class ProfileStore:
                     p["updated_at"] = datetime.now(timezone.utc).isoformat()
                     self._data["profiles"][i] = p
                     self._save_unlocked()
-                    return p
+                    return copy.deepcopy(p)
         return None
 
     def delete(self, profile_id: str) -> bool:
@@ -210,16 +209,18 @@ class ProfileStore:
         with self._lock:
             self._data["generations"].append(generation)
             self._save_unlocked()
-        return generation
+        return copy.deepcopy(generation)
 
     def list_generations(self) -> List[dict]:
-        return sorted(self._data["generations"], key=lambda g: g["created_at"], reverse=True)
+        with self._lock:
+            return sorted(copy.deepcopy(self._data["generations"]), key=lambda g: g["created_at"], reverse=True)
 
     def get_generation(self, generation_id: str) -> Optional[dict]:
-        for g in self._data["generations"]:
-            if g["id"] == generation_id:
-                return g
-        return None
+        with self._lock:
+            for g in self._data["generations"]:
+                if g["id"] == generation_id:
+                    return copy.deepcopy(g)
+            return None
 
     def delete_generation(self, generation_id: str) -> bool:
         with self._lock:
@@ -259,20 +260,22 @@ class ProfileStore:
         with self._lock:
             self._data["transcriptions"].append(transcription)
             self._save_unlocked()
-        return transcription
+        return copy.deepcopy(transcription)
 
     def list_transcriptions(self) -> List[dict]:
-        return sorted(
-            self._data.get("transcriptions", []),
-            key=lambda t: t["created_at"],
-            reverse=True,
-        )
+        with self._lock:
+            return sorted(
+                copy.deepcopy(self._data.get("transcriptions", [])),
+                key=lambda t: t["created_at"],
+                reverse=True,
+            )
 
     def get_transcription(self, transcription_id: str) -> Optional[dict]:
-        for t in self._data.get("transcriptions", []):
-            if t["id"] == transcription_id:
-                return t
-        return None
+        with self._lock:
+            for t in self._data.get("transcriptions", []):
+                if t["id"] == transcription_id:
+                    return copy.deepcopy(t)
+            return None
 
     def delete_transcription(self, transcription_id: str) -> bool:
         with self._lock:

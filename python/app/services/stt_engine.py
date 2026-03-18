@@ -20,6 +20,10 @@ from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor  # type: ignor
 
 logger = logging.getLogger(__name__)
 
+
+class ModelLoadingError(RuntimeError):
+    """Raised when a model operation is attempted while another load is in progress."""
+
 # Supported Whisper models (id -> display metadata).
 # This is the single source of truth — the frontend fetches from /stt/models.
 WHISPER_MODELS = [
@@ -96,21 +100,24 @@ class STTEngine:
 
     @property
     def is_loaded(self) -> bool:
-        return self._model is not None
+        with self._lock:
+            return self._model is not None
 
     @property
     def current_model(self) -> Optional[str]:
-        return self._current_model
+        with self._lock:
+            return self._current_model
 
     @property
     def loading_status(self) -> str:
-        if self._model is not None:
-            return "ready"
-        if self._error:
-            return f"error: {self._error}"
-        if self._loading:
-            return "loading"
-        return "idle"
+        with self._lock:
+            if self._model is not None:
+                return "ready"
+            if self._error:
+                return "error"
+            if self._loading:
+                return "loading"
+            return "idle"
 
     def load(self, model_id: str = DEFAULT_MODEL) -> None:
         """
@@ -127,12 +134,9 @@ class STTEngine:
             if self._current_model == model_id and self._model is not None:
                 return  # already loaded
             if self._loading:
-                logger.warning(
-                    "STTEngine: load(%s) called while already loading %s — skipping",
-                    model_id,
-                    self._current_model or "unknown",
+                raise ModelLoadingError(
+                    f"Model is currently loading. Please wait before requesting '{model_id}'."
                 )
-                return
 
             # Unload any existing model
             if self._model is not None:
@@ -197,16 +201,13 @@ class STTEngine:
         str
             The transcribed text.
         """
+        # Load or switch model if needed (check under lock to avoid TOCTOU race)
         with self._lock:
-            current = self._current_model
-            model_is_loaded = self._model is not None
-        target_model = model_id or current or DEFAULT_MODEL
+            target_model = model_id or self._current_model or DEFAULT_MODEL
+            needs_load = self._model is None or self._current_model != target_model
 
-        # Load or switch model if needed
-        if not model_is_loaded or current != target_model:
+        if needs_load:
             self.load(target_model)
-
-        logger.info("STTEngine: transcribing %s (model=%s, language=%s)", audio_path, self._current_model, language)
 
         # Snapshot references under lock so inference is thread-safe
         with self._lock:
@@ -214,9 +215,12 @@ class STTEngine:
             processor = self._processor
             device = self._device
             dtype = self._dtype
+            current = self._current_model
+
+        logger.info("STTEngine: transcribing %s (model=%s, language=%s)", audio_path, current, language)
 
         if model is None or processor is None:
-            raise RuntimeError("STT model failed to load. Check logs for details.")
+            raise RuntimeError("STT model is not available. It may have been unloaded during the request.")
 
         # Load audio with librosa (avoids torchcodec/FFmpeg issues)
         audio_array, _ = librosa.load(audio_path, sr=WHISPER_SAMPLE_RATE, mono=True)
@@ -333,10 +337,14 @@ class STTEngine:
         except Exception:
             pass
 
+        with self._lock:
+            current = self._current_model
+            model_loaded = self._model is not None
+
         results = []
         for m in WHISPER_MODELS:
             downloaded = m["id"] in cached_repos
-            loaded = self._current_model == m["id"] and self._model is not None
+            loaded = current == m["id"] and model_loaded
             results.append({
                 **m,
                 "status": "loaded" if loaded else "downloaded" if downloaded else "not_downloaded",

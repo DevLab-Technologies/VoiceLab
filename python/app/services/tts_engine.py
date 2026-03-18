@@ -23,8 +23,14 @@ logger = logging.getLogger(__name__)
 
 MIN_REF_DURATION_SEC = 2.0
 # HabibiTTS model context window is ~22 seconds total (ref + generated audio).
-# Cap reference audio to 15s so there's room for generation in each chunk.
-MAX_REF_DURATION_HABIBI = 15.0
+# F5-TTS docs recommend under 12s to leave room for generation in each chunk.
+MAX_REF_DURATION_HABIBI = 12.0
+# Silence appended to reference audio to prevent the last phrase from leaking
+# into generated output (see F5-TTS issue #85).
+TRAILING_SILENCE_SEC = 1.0
+# Effective cap for speech content: after appending silence the total must
+# stay within MAX_REF_DURATION_HABIBI.
+_MAX_SPEECH_DURATION = MAX_REF_DURATION_HABIBI - TRAILING_SILENCE_SEC
 
 # Arabic punctuation → Latin equivalents so chunk_text() can split properly.
 # The upstream regex only splits on Latin/CJK punctuation, missing Arabic marks.
@@ -131,17 +137,19 @@ class HabibiEngine(BaseTTSEngine):
 
     @property
     def is_loaded(self) -> bool:
-        return self._loaded
+        with self._lock:
+            return self._loaded
 
     @property
     def loading_status(self) -> str:
-        if self._loaded:
-            return "ready"
-        if self._error:
-            return f"error: {self._error}"
-        if self._loading:
-            return "loading"
-        return "idle"
+        with self._lock:
+            if self._loaded:
+                return "ready"
+            if self._error:
+                return "error"
+            if self._loading:
+                return "loading"
+            return "idle"
 
     def start_loading(self) -> None:
         """Kick off model loading in a background thread (non-blocking)."""
@@ -165,7 +173,7 @@ class HabibiEngine(BaseTTSEngine):
             from f5_tts.infer.utils_infer import load_vocoder, load_model  # type: ignore
             from f5_tts.model import DiT  # type: ignore
 
-            self._vocoder = load_vocoder(vocoder_name="vocos", is_local=False)
+            vocoder_obj = load_vocoder(vocoder_name="vocos", is_local=False)
             logger.info("[habibi 1/3] Vocoder loaded.")
 
             logger.info("[habibi 2/3] Downloading model checkpoint (first run only)…")
@@ -190,7 +198,7 @@ class HabibiEngine(BaseTTSEngine):
                 attn_mask_enabled=False,
                 checkpoint_activations=False,
             )
-            self._model = load_model(
+            model_obj = load_model(
                 model_cls=DiT,
                 model_cfg=model_arch,
                 ckpt_path=ckpt_file,
@@ -198,14 +206,18 @@ class HabibiEngine(BaseTTSEngine):
                 vocab_file=vocab_file,
             )
 
-            self._loaded = True
-            self._loading = False
+            with self._lock:
+                self._vocoder = vocoder_obj
+                self._model = model_obj
+                self._loaded = True
+                self._loading = False
             logger.info("HabibiEngine: model loaded successfully.")
 
         except Exception as exc:
             logger.error("HabibiEngine: failed to load model: %s", exc, exc_info=True)
-            self._error = str(exc)
-            self._loading = False
+            with self._lock:
+                self._error = str(exc)
+                self._loading = False
 
     def generate(
         self,
@@ -240,9 +252,13 @@ class HabibiEngine(BaseTTSEngine):
             Classifier-free guidance strength (default: 2.0).
             Higher values make the output follow the input text more closely.
         """
-        if not self._loaded:
-            raise RuntimeError("HabibiEngine is not loaded. Call start_loading() first.")
+        with self._lock:
+            if not self._loaded:
+                raise RuntimeError("HabibiEngine is not loaded. Call start_loading() first.")
+            model = self._model
+            vocoder = self._vocoder
 
+        import torch  # type: ignore
         import torchaudio  # type: ignore
         from f5_tts.infer.utils_infer import preprocess_ref_audio_text  # type: ignore
         from habibi_tts.infer.utils_infer import infer_process  # type: ignore
@@ -264,24 +280,18 @@ class HabibiEngine(BaseTTSEngine):
         # The HabibiTTS chunking formula uses (22 - ref_duration) which goes
         # negative for long audio, breaking text chunking completely.
         tmp_ref_audio_file = None
-        effective_ref_path = ref_audio_path
-        if ref_duration > MAX_REF_DURATION_HABIBI:
+
+        if ref_duration > _MAX_SPEECH_DURATION:
             logger.warning(
                 "HabibiEngine: ref audio (%.2fs) exceeds max (%.1fs), trimming",
                 ref_duration,
-                MAX_REF_DURATION_HABIBI,
+                _MAX_SPEECH_DURATION,
             )
-            max_samples = int(MAX_REF_DURATION_HABIBI * sr)
-            trimmed_audio = audio_info[:, :max_samples]
-
-            tmp_ref_audio_file = tempfile.NamedTemporaryFile(
-                suffix=".wav", delete=False
-            )
-            torchaudio.save(tmp_ref_audio_file.name, trimmed_audio, sr)
-            effective_ref_path = tmp_ref_audio_file.name
+            max_samples = int(_MAX_SPEECH_DURATION * sr)
+            audio_info = audio_info[:, :max_samples]
 
             # Proportionally trim reference text to match trimmed audio
-            trim_ratio = MAX_REF_DURATION_HABIBI / ref_duration
+            trim_ratio = _MAX_SPEECH_DURATION / ref_duration
             trimmed_len = max(10, int(len(ref_text) * trim_ratio))
             # Find the last word/sentence boundary within the trimmed range
             truncated = ref_text[:trimmed_len]
@@ -293,11 +303,30 @@ class HabibiEngine(BaseTTSEngine):
             ref_text = truncated
             logger.info(
                 "HabibiEngine: trimmed ref to %.1fs, ref_text_len=%d",
-                MAX_REF_DURATION_HABIBI,
+                _MAX_SPEECH_DURATION,
                 len(ref_text),
             )
 
+        # Append trailing silence to prevent the last phrase of ref_text
+        # from leaking into generated output (F5-TTS issue #85).
+        silence_samples = int(TRAILING_SILENCE_SEC * sr)
+        silence = torch.zeros(audio_info.shape[0], silence_samples, dtype=audio_info.dtype)
+        audio_info = torch.cat([audio_info, silence], dim=-1)
+
         try:
+            # Write modified audio (with silence appended) to a temp file
+            tmp_ref_audio_file = tempfile.NamedTemporaryFile(
+                suffix=".wav", delete=False
+            )
+            tmp_ref_audio_file.close()
+            torchaudio.save(tmp_ref_audio_file.name, audio_info, sr)
+            effective_ref_path = tmp_ref_audio_file.name
+
+            # Ensure ref_text ends with "." so the model recognises the
+            # boundary between reference and generated speech.
+            if ref_text and not ref_text.rstrip().endswith((".", "!", "?", "؟")):
+                ref_text = ref_text.rstrip() + "."
+
             ref_audio, ref_text_processed = preprocess_ref_audio_text(
                 effective_ref_path, ref_text
             )
@@ -307,6 +336,10 @@ class HabibiEngine(BaseTTSEngine):
             # Normalize Arabic punctuation so upstream chunk_text() can split
             # long text into batches that fit the model's ~22s context window.
             gen_text = _normalize_arabic_punctuation(gen_text)
+
+            # Prepend a space so the model cleanly separates ref from gen text.
+            if gen_text and not gen_text.startswith(" "):
+                gen_text = " " + gen_text
 
             logger.info(
                 "HabibiEngine: generating — dialect=%s speed=%.2f "
@@ -324,8 +357,8 @@ class HabibiEngine(BaseTTSEngine):
                 ref_audio,
                 ref_text_processed,
                 gen_text,
-                self._model,
-                self._vocoder,
+                model,
+                vocoder,
                 dialect_id=dialect_id,
                 speed=speed,
                 nfe_step=nfe_step,
@@ -334,7 +367,7 @@ class HabibiEngine(BaseTTSEngine):
 
             return self._save_audio(audio_data, final_sample_rate)
         finally:
-            # Clean up temporary trimmed audio file
+            # Clean up temporary audio file
             if tmp_ref_audio_file is not None:
                 try:
                     os.unlink(tmp_ref_audio_file.name)
@@ -343,11 +376,12 @@ class HabibiEngine(BaseTTSEngine):
 
     def unload(self) -> None:
         """Release model and vocoder references so memory can be reclaimed."""
-        self._model = None
-        self._vocoder = None
-        self._loaded = False
-        self._loading = False
-        self._error = None
+        with self._lock:
+            self._model = None
+            self._vocoder = None
+            self._loaded = False
+            self._loading = False
+            self._error = None
         logger.info("HabibiEngine: unloaded.")
 
     # ------------------------------------------------------------------
