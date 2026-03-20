@@ -18,6 +18,11 @@ const api = {
     const handler = (_event: any, data: any): void => callback(data)
     ipcRenderer.on('update-status', handler)
     return () => ipcRenderer.removeListener('update-status', handler)
+  },
+  onBackendStatus: (callback: (data: { stage: string; message: string }) => void): (() => void) => {
+    const handler = (_: any, data: { stage: string; message: string }): void => callback(data)
+    ipcRenderer.on('backend-status', handler)
+    return () => ipcRenderer.removeListener('backend-status', handler)
   }
 }
 

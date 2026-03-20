@@ -1,4 +1,4 @@
-import { Globe, Languages } from 'lucide-react'
+import { Globe, Languages, Wand2, Users } from 'lucide-react'
 import type { ModelId, ModelInfo } from '../../types/model'
 import { MODEL_INFO } from '../../lib/constants'
 import { cn } from '../../lib/utils'
@@ -11,7 +11,9 @@ interface ModelSelectorProps {
 
 const MODEL_ICONS: Record<ModelId, typeof Globe> = {
   'habibi-tts': Languages,
-  'qwen3-tts': Globe
+  'qwen3-tts': Globe,
+  'qwen3-tts-voice-design': Wand2,
+  'qwen3-tts-custom-voice': Users
 }
 
 export default function ModelSelector({ value, onChange, availableModels }: ModelSelectorProps) {

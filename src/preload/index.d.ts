@@ -10,6 +10,7 @@ interface CustomAPI {
   downloadUpdate: () => Promise<{ success: boolean; error?: string }>
   installUpdate: () => Promise<void>
   onUpdateStatus: (callback: (data: any) => void) => () => void
+  onBackendStatus: (callback: (data: { stage: string; message: string }) => void) => () => void
 }
 
 declare global {

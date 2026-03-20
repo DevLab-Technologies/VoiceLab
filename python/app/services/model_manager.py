@@ -38,6 +38,26 @@ MODELS: Dict[str, Dict[str, Any]] = {
         "size_mb": 3400,
         "pip_package": "qwen-tts",
     },
+    "qwen3-tts-voice-design": {
+        "name": "Qwen3-TTS VoiceDesign 1.7B",
+        "description": "Multilingual TTS with voice design — describe a voice instead of cloning",
+        "languages": [
+            "English", "Chinese", "Japanese", "Korean", "German",
+            "French", "Russian", "Portuguese", "Spanish", "Italian",
+        ],
+        "size_mb": 3400,
+        "pip_package": "qwen-tts",
+    },
+    "qwen3-tts-custom-voice": {
+        "name": "Qwen3-TTS CustomVoice 1.7B",
+        "description": "Multilingual TTS with 9 preset voices and style control",
+        "languages": [
+            "English", "Chinese", "Japanese", "Korean", "German",
+            "French", "Russian", "Portuguese", "Spanish", "Italian",
+        ],
+        "size_mb": 3400,
+        "pip_package": "qwen-tts",
+    },
 }
 
 # Path where per-model download state is persisted
@@ -122,6 +142,12 @@ class ModelManager:
             elif model_id == "qwen3-tts":
                 from app.services.qwen_engine import QwenEngine
                 self._engines[model_id] = QwenEngine()
+            elif model_id == "qwen3-tts-voice-design":
+                from app.services.qwen_engine import QwenVoiceDesignEngine
+                self._engines[model_id] = QwenVoiceDesignEngine()
+            elif model_id == "qwen3-tts-custom-voice":
+                from app.services.qwen_engine import QwenCustomVoiceEngine
+                self._engines[model_id] = QwenCustomVoiceEngine()
             else:
                 raise ValueError(f"Unknown model_id: {model_id!r}")
         return self._engines[model_id]
@@ -223,6 +249,10 @@ class ModelManager:
                 self._download_habibi()
             elif model_id == "qwen3-tts":
                 self._download_qwen()
+            elif model_id == "qwen3-tts-voice-design":
+                self._download_qwen_voice_design()
+            elif model_id == "qwen3-tts-custom-voice":
+                self._download_qwen_custom_voice()
             else:
                 raise ValueError(f"No download handler for model: {model_id!r}")
 
@@ -277,6 +307,54 @@ class ModelManager:
         # Release immediately; the engine will re-load when needed
         del _model
         logger.info("[download/qwen] Qwen3-TTS weights cached successfully.")
+
+    def _download_qwen_voice_design(self) -> None:
+        """Pull Qwen3-TTS VoiceDesign weights from HuggingFace via from_pretrained."""
+        logger.info("[download/qwen-voice-design] Fetching Qwen3-TTS VoiceDesign model weights…")
+        try:
+            import torch
+            from qwen_tts import Qwen3TTSModel  # type: ignore
+        except ImportError as exc:
+            raise RuntimeError(
+                "qwen-tts package is not installed. "
+                "Run: pip install qwen-tts>=0.1.0"
+            ) from exc
+
+        self._update_progress("qwen3-tts-voice-design", 10)
+        # Calling from_pretrained triggers the HuggingFace Hub download
+        _model = Qwen3TTSModel.from_pretrained(
+            "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+            device_map="cpu",
+            dtype=torch.float32,
+        )
+        self._update_progress("qwen3-tts-voice-design", 90)
+        # Release immediately; the engine will re-load when needed
+        del _model
+        logger.info("[download/qwen-voice-design] Qwen3-TTS VoiceDesign weights cached successfully.")
+
+    def _download_qwen_custom_voice(self) -> None:
+        """Pull Qwen3-TTS CustomVoice weights from HuggingFace via from_pretrained."""
+        logger.info("[download/qwen-custom-voice] Fetching Qwen3-TTS CustomVoice model weights…")
+        try:
+            import torch
+            from qwen_tts import Qwen3TTSModel  # type: ignore
+        except ImportError as exc:
+            raise RuntimeError(
+                "qwen-tts package is not installed. "
+                "Run: pip install qwen-tts>=0.1.0"
+            ) from exc
+
+        self._update_progress("qwen3-tts-custom-voice", 10)
+        # Calling from_pretrained triggers the HuggingFace Hub download
+        _model = Qwen3TTSModel.from_pretrained(
+            "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
+            device_map="cpu",
+            dtype=torch.float32,
+        )
+        self._update_progress("qwen3-tts-custom-voice", 90)
+        # Release immediately; the engine will re-load when needed
+        del _model
+        logger.info("[download/qwen-custom-voice] Qwen3-TTS CustomVoice weights cached successfully.")
 
     def _update_progress(self, model_id: str, progress: int) -> None:
         with self._state_lock:

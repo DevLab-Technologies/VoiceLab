@@ -26,8 +26,11 @@ interface AppState {
   modelLoaded: boolean
   modelStatus: string
   initialDataLoaded: boolean
+  backendStage: string
+  backendMessage: string
   setBackendReady: (ready: boolean) => void
   setModelLoaded: (loaded: boolean) => void
+  setBackendStage: (stage: string, message: string) => void
   pollHealth: () => Promise<void>
 
   // Models
@@ -64,6 +67,22 @@ interface AppState {
   fetchGenerations: () => Promise<void>
   deleteGeneration: (id: string) => Promise<void>
   prepareRegeneration: (generation: Generation) => void
+
+  // Voice Design mode
+  generationMode: 'clone' | 'design' | 'preset'
+  setGenerationMode: (mode: 'clone' | 'design' | 'preset') => void
+  voiceDesignInstruct: string
+  setVoiceDesignInstruct: (instruct: string) => void
+  voiceDesignLanguage: string
+  setVoiceDesignLanguage: (language: string) => void
+
+  // Custom Voice mode
+  customVoiceSpeaker: string
+  setCustomVoiceSpeaker: (speaker: string) => void
+  customVoiceLanguage: string
+  setCustomVoiceLanguage: (language: string) => void
+  customVoiceInstruct: string
+  setCustomVoiceInstruct: (instruct: string) => void
 
   // Generation Parameters (HabibiTTS)
   genSpeed: number
@@ -141,8 +160,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   modelLoaded: false,
   modelStatus: 'idle',
   initialDataLoaded: false,
+  backendStage: 'connecting',
+  backendMessage: 'Starting...',
   setBackendReady: (ready) => set({ backendReady: ready }),
   setModelLoaded: (loaded) => set({ modelLoaded: loaded }),
+  setBackendStage: (stage, message) => set({ backendStage: stage, backendMessage: message }),
   pollHealth: async () => {
     try {
       const health = await audioApi.checkHealth()
@@ -327,6 +349,25 @@ export const useAppStore = create<AppState>((set, get) => ({
   generations: [],
   setGenerationText: (text) => set({ generationText: text }),
 
+  // Voice Design mode
+  generationMode: 'clone',
+  setGenerationMode: (mode) => set({ generationMode: mode }),
+  voiceDesignInstruct: '',
+  setVoiceDesignInstruct: (instruct) => set({ voiceDesignInstruct: instruct }),
+  voiceDesignLanguage: localStorage.getItem('voicelab-vd-language') || 'English',
+  setVoiceDesignLanguage: (language) => {
+    localStorage.setItem('voicelab-vd-language', language)
+    set({ voiceDesignLanguage: language })
+  },
+
+  // Custom Voice mode
+  customVoiceSpeaker: localStorage.getItem('voicelab-cv-speaker') || 'Vivian',
+  setCustomVoiceSpeaker: (speaker) => { localStorage.setItem('voicelab-cv-speaker', speaker); set({ customVoiceSpeaker: speaker }) },
+  customVoiceLanguage: localStorage.getItem('voicelab-cv-language') || 'English',
+  setCustomVoiceLanguage: (language) => { localStorage.setItem('voicelab-cv-language', language); set({ customVoiceLanguage: language }) },
+  customVoiceInstruct: '',
+  setCustomVoiceInstruct: (instruct) => set({ customVoiceInstruct: instruct }),
+
   // Generation Parameters
   genSpeed: parseFloat(localStorage.getItem('voicelab-gen-speed') || '1.0'),
   genNfeStep: parseInt(localStorage.getItem('voicelab-gen-nfe') || '32'),
@@ -336,7 +377,88 @@ export const useAppStore = create<AppState>((set, get) => ({
   setGenCfgStrength: (v) => { localStorage.setItem('voicelab-gen-cfg', String(v)); set({ genCfgStrength: v }) },
 
   generate: async () => {
-    const { selectedProfileId, generationText, profiles, genSpeed, genNfeStep, genCfgStrength } = get()
+    const {
+      generationMode, selectedProfileId, generationText, profiles,
+      genSpeed, genNfeStep, genCfgStrength,
+      voiceDesignInstruct, voiceDesignLanguage
+    } = get()
+
+    if (generationMode === 'preset') {
+      if (!generationText.trim() || !get().customVoiceSpeaker) return
+
+      _generationAbort = new AbortController()
+      set({ isGenerating: true, currentGeneration: null })
+      try {
+        const { customVoiceSpeaker, customVoiceLanguage, customVoiceInstruct } = get()
+        const generation = await ttsApi.generateSpeech(
+          {
+            text: generationText,
+            model: 'qwen3-tts-custom-voice',
+            speaker: customVoiceSpeaker,
+            language: customVoiceLanguage,
+            ...(customVoiceInstruct.trim() ? { instruct: customVoiceInstruct } : {})
+          },
+          _generationAbort.signal
+        )
+        set((state) => ({
+          currentGeneration: generation,
+          generations: [generation, ...state.generations],
+          isGenerating: false
+        }))
+        get().addToast('Speech generated', 'success')
+      } catch (err: any) {
+        if (axios.isCancel(err) || err?.name === 'CanceledError') {
+          set({ isGenerating: false })
+          get().addToast('Generation stopped', 'info')
+          return
+        }
+        set({ isGenerating: false })
+        const msg = err?.response?.data?.detail || 'Generation failed'
+        get().addToast(msg, 'error')
+      } finally {
+        _generationAbort = null
+      }
+      return
+    }
+
+    if (generationMode === 'design') {
+      // Voice Design mode — no profile needed
+      if (!generationText.trim() || !voiceDesignInstruct.trim()) return
+
+      _generationAbort = new AbortController()
+      set({ isGenerating: true, currentGeneration: null })
+      try {
+        const generation = await ttsApi.generateSpeech(
+          {
+            text: generationText,
+            model: 'qwen3-tts-voice-design',
+            instruct: voiceDesignInstruct,
+            language: voiceDesignLanguage
+          },
+          _generationAbort.signal
+        )
+        set((state) => ({
+          currentGeneration: generation,
+          generations: [generation, ...state.generations],
+          isGenerating: false
+        }))
+        get().addToast('Speech generated', 'success')
+      } catch (err: any) {
+        if (axios.isCancel(err) || err?.name === 'CanceledError') {
+          set({ isGenerating: false })
+          get().addToast('Generation stopped', 'info')
+          return
+        }
+        set({ isGenerating: false })
+        const msg = err?.response?.data?.detail || 'Generation failed'
+        get().addToast(msg, 'error')
+      } finally {
+        _generationAbort = null
+      }
+      return
+    }
+
+    // Clone mode — existing logic
     if (!selectedProfileId || !generationText.trim()) return
 
     const profile = profiles.find((p) => p.id === selectedProfileId)
@@ -344,7 +466,6 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     const isHabibi = (profile.model || 'habibi-tts') === 'habibi-tts'
 
-    // Create a new AbortController for this generation
     _generationAbort = new AbortController()
 
     set({ isGenerating: true, currentGeneration: null })
@@ -403,15 +524,34 @@ export const useAppStore = create<AppState>((set, get) => ({
     get().addToast('Generation deleted', 'success')
   },
   prepareRegeneration: (generation) => {
-    // Find matching profile to select it
-    const profile = get().profiles.find((p) => p.id === generation.profile_id)
-    set({
-      generationText: generation.text,
-      selectedProfileId: profile ? profile.id : null,
-      currentGeneration: null
-    })
-    if (!profile) {
-      get().addToast('Original profile not found — select a profile manually', 'info')
+    if (generation.model === 'qwen3-tts-custom-voice') {
+      set({
+        generationMode: 'preset',
+        generationText: generation.text,
+        customVoiceSpeaker: generation.speaker || 'Vivian',
+        customVoiceLanguage: generation.language || 'English',
+        customVoiceInstruct: generation.instruct || '',
+        currentGeneration: null
+      })
+    } else if (generation.model === 'qwen3-tts-voice-design') {
+      set({
+        generationMode: 'design',
+        generationText: generation.text,
+        voiceDesignInstruct: generation.instruct || '',
+        voiceDesignLanguage: generation.language || 'English',
+        currentGeneration: null
+      })
+    } else {
+      const profile = get().profiles.find((p) => p.id === generation.profile_id)
+      set({
+        generationMode: 'clone',
+        generationText: generation.text,
+        selectedProfileId: profile ? profile.id : null,
+        currentGeneration: null
+      })
+      if (!profile) {
+        get().addToast('Original profile not found — select a profile manually', 'info')
+      }
     }
   },
 

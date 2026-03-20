@@ -14,7 +14,7 @@ import { useAppStore } from './store'
 import { initApiClient } from './api/client'
 
 export default function App() {
-  const { pollHealth, backendReady, modelLoaded, modelStatus } = useAppStore()
+  const { pollHealth, backendReady, backendStage, backendMessage, setBackendStage } = useAppStore()
 
   useEffect(() => {
     // Initialize API client with the correct backend port
@@ -30,11 +30,19 @@ export default function App() {
     return () => clearInterval(interval)
   }, [pollHealth, backendReady])
 
+  // Listen for backend startup progress events from the main process
+  useEffect(() => {
+    const cleanup = window.api.onBackendStatus((data) => {
+      setBackendStage(data.stage, data.message)
+    })
+    return cleanup
+  }, [setBackendStage])
+
   // Show loading screen until backend is up
   // Models are loaded on-demand when the user generates speech
   if (!backendReady) {
     return (
-      <LoadingScreen backendReady={backendReady} />
+      <LoadingScreen stage={backendStage} message={backendMessage} />
     )
   }
 

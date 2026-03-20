@@ -41,6 +41,25 @@ export const LANGUAGES: LanguageInfo[] = [
 
 export const LANGUAGE_MAP = Object.fromEntries(LANGUAGES.map((l) => [l.code, l]))
 
+// Preset speakers for Qwen3-TTS CustomVoice
+export interface SpeakerInfo {
+  id: string
+  name: string
+  description: string
+}
+
+export const SPEAKERS: SpeakerInfo[] = [
+  { id: 'Vivian', name: 'Vivian', description: 'Female, warm and expressive' },
+  { id: 'Serena', name: 'Serena', description: 'Female, calm and gentle' },
+  { id: 'Uncle_Fu', name: 'Uncle Fu', description: 'Male, mature and deep' },
+  { id: 'Dylan', name: 'Dylan', description: 'Male, young and energetic' },
+  { id: 'Eric', name: 'Eric', description: 'Male, professional and clear' },
+  { id: 'Ryan', name: 'Ryan', description: 'Male, natural and friendly' },
+  { id: 'Aiden', name: 'Aiden', description: 'Male, warm and conversational' },
+  { id: 'Ono_Anna', name: 'Ono Anna', description: 'Female, soft and melodic' },
+  { id: 'Sohee', name: 'Sohee', description: 'Female, bright and lively' },
+]
+
 // Model info
 export interface ModelInfoStatic {
   id: ModelId
@@ -62,6 +81,20 @@ export const MODEL_INFO: Record<ModelId, ModelInfoStatic> = {
     id: 'qwen3-tts',
     name: 'Qwen3-TTS 1.7B',
     description: 'Multilingual TTS with voice cloning for 10 languages',
+    languages: ['English', 'Chinese', 'Japanese', 'Korean', 'German', 'French', 'Russian', 'Portuguese', 'Spanish', 'Italian'],
+    sizeMB: 3400
+  },
+  'qwen3-tts-voice-design': {
+    id: 'qwen3-tts-voice-design',
+    name: 'Qwen3-TTS VoiceDesign',
+    description: 'Multilingual TTS — describe a voice instead of cloning',
+    languages: ['English', 'Chinese', 'Japanese', 'Korean', 'German', 'French', 'Russian', 'Portuguese', 'Spanish', 'Italian'],
+    sizeMB: 3400
+  },
+  'qwen3-tts-custom-voice': {
+    id: 'qwen3-tts-custom-voice',
+    name: 'Qwen3-TTS CustomVoice',
+    description: 'Multilingual TTS with 9 preset voices and style control',
     languages: ['English', 'Chinese', 'Japanese', 'Korean', 'German', 'French', 'Russian', 'Portuguese', 'Spanish', 'Italian'],
     sizeMB: 3400
   }

@@ -83,7 +83,10 @@ function healthCheck(port: number): Promise<boolean> {
 
 const execFileAsync = promisify(execFile)
 
-async function ensureVenv(pythonDir: string): Promise<string> {
+async function ensureVenv(
+  pythonDir: string,
+  onProgress?: (stage: string, message: string) => void
+): Promise<string> {
   const isWin = process.platform === 'win32'
   const venvDir = join(pythonDir, '.venv')
   const venvPython = isWin
@@ -101,6 +104,7 @@ async function ensureVenv(pythonDir: string): Promise<string> {
 
   if (!existsSync(venvPython)) {
     console.log('Creating Python virtual environment...')
+    onProgress?.('environment', 'Creating Python virtual environment...')
     await execFileAsync('uv', ['venv', venvDir], { cwd: pythonDir })
   }
 
@@ -112,6 +116,7 @@ async function ensureVenv(pythonDir: string): Promise<string> {
 
   if (currentHash !== cachedHash) {
     console.log('Syncing Python dependencies...')
+    onProgress?.('dependencies', 'Installing dependencies...')
     await execFileAsync('uv', ['pip', 'install', '-r', requirementsFile, '--python', venvPython], {
       cwd: pythonDir,
       timeout: 600000
@@ -124,7 +129,9 @@ async function ensureVenv(pythonDir: string): Promise<string> {
   return venvPython
 }
 
-export async function startPythonBackend(): Promise<number> {
+export async function startPythonBackend(
+  onProgress?: (stage: string, message: string) => void
+): Promise<number> {
   backendPort = await findFreePort()
   const pythonDir = getPythonDir()
 
@@ -133,7 +140,8 @@ export async function startPythonBackend(): Promise<number> {
   const hasBundledRuntime = existsSync(join(pythonDir, 'python-runtime'))
   let pythonBin: string
   if (isDev && !hasBundledRuntime) {
-    pythonBin = await ensureVenv(pythonDir)
+    onProgress?.('environment', 'Setting up Python environment...')
+    pythonBin = await ensureVenv(pythonDir, onProgress)
   } else {
     pythonBin = getPythonBin(pythonDir)
   }
@@ -141,6 +149,7 @@ export async function startPythonBackend(): Promise<number> {
   console.log(`Starting Python backend on port ${backendPort}...`)
   console.log(`Python directory: ${pythonDir}`)
   console.log(`Python binary: ${pythonBin}`)
+  onProgress?.('spawning', 'Starting server...')
 
   // Build environment — sanitize PYTHONHOME/PYTHONPATH in production
   // to prevent interference from the user's system Python
@@ -179,9 +188,13 @@ export async function startPythonBackend(): Promise<number> {
   const maxAttempts = 60 // 30 seconds
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise((r) => setTimeout(r, 500))
+    if (i === 0) {
+      onProgress?.('health', 'Connecting to backend...')
+    }
     const healthy = await healthCheck(backendPort)
     if (healthy) {
       console.log('Python backend is ready!')
+      onProgress?.('ready', 'Ready!')
       return backendPort
     }
   }

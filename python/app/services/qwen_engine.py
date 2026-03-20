@@ -1,9 +1,13 @@
 """
-QwenEngine — Qwen3-TTS 1.7B backend with voice cloning support.
+Qwen3-TTS engine backends.
 
-The engine wraps the ``qwen-tts`` pip package.  If the package is not
-installed the engine reports "not_installed" as its status rather than
-crashing the application.
+QwenEngine            — voice cloning (Qwen3-TTS-12Hz-1.7B-Base)
+QwenVoiceDesignEngine — voice design (Qwen3-TTS-12Hz-1.7B-VoiceDesign)
+QwenCustomVoiceEngine — preset speakers with optional style (Qwen3-TTS-12Hz-1.7B-CustomVoice)
+
+All engines wrap the ``qwen-tts`` pip package.  If the package is not
+installed they report "not_installed" as their status rather than crashing
+the application.
 """
 
 import logging
@@ -19,13 +23,21 @@ from app.services.tts_engine import BaseTTSEngine, MIN_REF_DURATION_SEC
 
 logger = logging.getLogger(__name__)
 
-# HuggingFace Hub model identifier for Qwen3-TTS
+# HuggingFace Hub model identifiers
 _QWEN_MODEL_ID = "Qwen/Qwen3-TTS-12Hz-1.7B-Base"
+_QWEN_VOICE_DESIGN_MODEL_ID = "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign"
+_QWEN_CUSTOM_VOICE_MODEL_ID = "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
 
 # Languages supported by the Qwen3-TTS model
 SUPPORTED_LANGUAGES = [
     "English", "Chinese", "Japanese", "Korean", "German",
     "French", "Russian", "Portuguese", "Spanish", "Italian",
+]
+
+# Predefined speakers available in the CustomVoice model
+CUSTOM_VOICE_SPEAKERS = [
+    "Vivian", "Serena", "Uncle_Fu", "Dylan", "Eric",
+    "Ryan", "Aiden", "Ono_Anna", "Sohee",
 ]
 
 
@@ -261,3 +273,323 @@ class QwenEngine(BaseTTSEngine):
             "audio_path": str(out_path),
             "duration": round(duration, 2),
         }
+
+
+class QwenVoiceDesignEngine:
+    """
+    TTS engine backed by Qwen3-TTS-12Hz-1.7B-VoiceDesign.
+
+    Generates speech from text and a natural-language voice description
+    (``instruct``) — no reference audio or transcript is required.
+
+    This engine intentionally does NOT extend BaseTTSEngine because its
+    ``generate()`` signature is fundamentally different from voice-cloning
+    engines (no ref_audio_path / ref_text parameters).
+    """
+
+    def __init__(self):
+        self._model = None
+        self._loaded: bool = False
+        self._loading: bool = False
+        self._error: str | None = None
+        self._lock = threading.Lock()
+
+    # ------------------------------------------------------------------
+    # Status interface (mirrors BaseTTSEngine properties)
+    # ------------------------------------------------------------------
+
+    @property
+    def is_loaded(self) -> bool:
+        return self._loaded
+
+    @property
+    def loading_status(self) -> str:
+        if not _qwen_tts_available():
+            return "not_installed"
+        if self._loaded:
+            return "ready"
+        if self._error:
+            return f"error: {self._error}"
+        if self._loading:
+            return "loading"
+        return "idle"
+
+    def start_loading(self) -> None:
+        """Begin loading model weights in a background thread (non-blocking)."""
+        if not _qwen_tts_available():
+            logger.warning(
+                "QwenVoiceDesignEngine: qwen-tts package is not installed. "
+                "Run: pip install 'qwen-tts>=0.1.0'"
+            )
+            return
+
+        with self._lock:
+            if self._loading or self._loaded:
+                return
+            self._loading = True
+
+        thread = threading.Thread(
+            target=self._load_sync,
+            daemon=True,
+            name="qwen-voice-design-load",
+        )
+        thread.start()
+        logger.info("QwenVoiceDesignEngine: model loading started in background thread.")
+
+    def _load_sync(self) -> None:
+        """Synchronous model loading — runs in a background thread."""
+        try:
+            logger.info(
+                "[qwen-voice-design 1/1] Loading Qwen3-TTS-VoiceDesign weights from HuggingFace cache…"
+            )
+            import torch  # type: ignore
+            from qwen_tts import Qwen3TTSModel  # type: ignore
+
+            if torch.cuda.is_available():
+                device_map = "auto"
+            else:
+                try:
+                    if torch.backends.mps.is_available():
+                        device_map = "mps"
+                    else:
+                        device_map = "cpu"
+                except AttributeError:
+                    device_map = "cpu"
+
+            logger.info("QwenVoiceDesignEngine: using device_map=%s", device_map)
+
+            self._model = Qwen3TTSModel.from_pretrained(
+                _QWEN_VOICE_DESIGN_MODEL_ID,
+                device_map=device_map,
+                dtype=torch.float32,
+            )
+
+            self._loaded = True
+            self._loading = False
+            logger.info("QwenVoiceDesignEngine: model loaded successfully.")
+
+        except Exception as exc:
+            logger.error(
+                "QwenVoiceDesignEngine: failed to load model: %s", exc, exc_info=True
+            )
+            self._error = str(exc)
+            self._loading = False
+
+    def generate(
+        self,
+        gen_text: str,
+        instruct: str,
+        language: str = "English",
+        **kwargs,
+    ) -> dict:
+        """
+        Run Qwen3-TTS VoiceDesign inference synchronously.
+
+        Parameters
+        ----------
+        gen_text : str
+            Text to synthesise.
+        instruct : str
+            Natural-language description of the desired voice
+            (e.g. "A calm, deep male voice with a slight British accent").
+        language : str
+            Target language name (e.g. "English", "Chinese").  Defaults to
+            "English".
+        """
+        if not self._loaded:
+            raise RuntimeError(
+                "QwenVoiceDesignEngine is not loaded. Call start_loading() first."
+            )
+
+        if not _qwen_tts_available():
+            raise RuntimeError(
+                "qwen-tts package is not installed. "
+                "Run: pip install 'qwen-tts>=0.1.0'"
+            )
+
+        logger.info(
+            "QwenVoiceDesignEngine: generating — language=%s instruct_len=%d gen_text_len=%d",
+            language,
+            len(instruct),
+            len(gen_text),
+        )
+
+        wavs, sample_rate = self._model.generate_voice_design(
+            text=gen_text,
+            instruct=instruct,
+            language=language,
+        )
+
+        audio_data = QwenEngine._to_numpy(wavs)
+        return QwenEngine._save_audio(audio_data, int(sample_rate))
+
+    def unload(self) -> None:
+        """Release model reference so memory can be reclaimed."""
+        self._model = None
+        self._loaded = False
+        self._loading = False
+        self._error = None
+        logger.info("QwenVoiceDesignEngine: unloaded.")
+
+
+class QwenCustomVoiceEngine:
+    """
+    TTS engine backed by Qwen3-TTS-12Hz-1.7B-CustomVoice.
+
+    Generates speech from text using one of the 9 predefined speakers
+    (see ``CUSTOM_VOICE_SPEAKERS``) with an optional natural-language style
+    instruction.  No reference audio or transcript is required.
+
+    This engine intentionally does NOT extend BaseTTSEngine because its
+    ``generate()`` signature differs from voice-cloning engines.
+    """
+
+    def __init__(self):
+        self._model = None
+        self._loaded: bool = False
+        self._loading: bool = False
+        self._error: str | None = None
+        self._lock = threading.Lock()
+
+    # ------------------------------------------------------------------
+    # Status interface (mirrors BaseTTSEngine properties)
+    # ------------------------------------------------------------------
+
+    @property
+    def is_loaded(self) -> bool:
+        return self._loaded
+
+    @property
+    def loading_status(self) -> str:
+        if not _qwen_tts_available():
+            return "not_installed"
+        if self._loaded:
+            return "ready"
+        if self._error:
+            return f"error: {self._error}"
+        if self._loading:
+            return "loading"
+        return "idle"
+
+    def start_loading(self) -> None:
+        """Begin loading model weights in a background thread (non-blocking)."""
+        if not _qwen_tts_available():
+            logger.warning(
+                "QwenCustomVoiceEngine: qwen-tts package is not installed. "
+                "Run: pip install 'qwen-tts>=0.1.0'"
+            )
+            return
+
+        with self._lock:
+            if self._loading or self._loaded:
+                return
+            self._loading = True
+
+        thread = threading.Thread(
+            target=self._load_sync,
+            daemon=True,
+            name="qwen-custom-voice-load",
+        )
+        thread.start()
+        logger.info("QwenCustomVoiceEngine: model loading started in background thread.")
+
+    def _load_sync(self) -> None:
+        """Synchronous model loading — runs in a background thread."""
+        try:
+            logger.info(
+                "[qwen-custom-voice 1/1] Loading Qwen3-TTS-CustomVoice weights from HuggingFace cache…"
+            )
+            import torch  # type: ignore
+            from qwen_tts import Qwen3TTSModel  # type: ignore
+
+            if torch.cuda.is_available():
+                device_map = "auto"
+            else:
+                try:
+                    if torch.backends.mps.is_available():
+                        device_map = "mps"
+                    else:
+                        device_map = "cpu"
+                except AttributeError:
+                    device_map = "cpu"
+
+            logger.info("QwenCustomVoiceEngine: using device_map=%s", device_map)
+
+            self._model = Qwen3TTSModel.from_pretrained(
+                _QWEN_CUSTOM_VOICE_MODEL_ID,
+                device_map=device_map,
+                dtype=torch.float32,
+            )
+
+            self._loaded = True
+            self._loading = False
+            logger.info("QwenCustomVoiceEngine: model loaded successfully.")
+
+        except Exception as exc:
+            logger.error(
+                "QwenCustomVoiceEngine: failed to load model: %s", exc, exc_info=True
+            )
+            self._error = str(exc)
+            self._loading = False
+
+    def generate(
+        self,
+        gen_text: str,
+        speaker: str,
+        language: str = "English",
+        instruct: str | None = None,
+        **kwargs,
+    ) -> dict:
+        """
+        Run Qwen3-TTS CustomVoice inference synchronously.
+
+        Parameters
+        ----------
+        gen_text : str
+            Text to synthesise.
+        speaker : str
+            One of the predefined speaker names (see ``CUSTOM_VOICE_SPEAKERS``).
+        language : str
+            Target language name (e.g. "English", "Chinese").  Defaults to
+            "English".
+        instruct : str | None
+            Optional natural-language style instruction
+            (e.g. "Speak slowly and softly").  Pass ``None`` to omit.
+        """
+        if not self._loaded:
+            raise RuntimeError(
+                "QwenCustomVoiceEngine is not loaded. Call start_loading() first."
+            )
+
+        if not _qwen_tts_available():
+            raise RuntimeError(
+                "qwen-tts package is not installed. "
+                "Run: pip install 'qwen-tts>=0.1.0'"
+            )
+
+        logger.info(
+            "QwenCustomVoiceEngine: generating — speaker=%s language=%s "
+            "instruct_len=%d gen_text_len=%d",
+            speaker,
+            language,
+            len(instruct) if instruct else 0,
+            len(gen_text),
+        )
+
+        wavs, sample_rate = self._model.generate_custom_voice(
+            text=gen_text,
+            speaker=speaker,
+            language=language,
+            instruct=instruct if instruct else None,
+        )
+
+        audio_data = QwenEngine._to_numpy(wavs)
+        return QwenEngine._save_audio(audio_data, int(sample_rate))
+
+    def unload(self) -> None:
+        """Release model reference so memory can be reclaimed."""
+        self._model = None
+        self._loaded = False
+        self._loading = False
+        self._error = None
+        logger.info("QwenCustomVoiceEngine: unloaded.")
