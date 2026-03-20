@@ -1,4 +1,4 @@
-export type ModelId = 'habibi-tts' | 'qwen3-tts'
+export type ModelId = 'habibi-tts' | 'qwen3-tts' | 'qwen3-tts-voice-design' | 'qwen3-tts-custom-voice'
 
 export type ModelStatus = 'not_downloaded' | 'downloading' | 'downloaded' | 'loading' | 'loaded' | 'error'
 

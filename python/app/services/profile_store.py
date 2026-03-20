@@ -172,8 +172,8 @@ class ProfileStore:
 
     def add_generation(
         self,
-        profile_id: str,
-        profile_name: str,
+        profile_id: str | None,
+        profile_name: str | None,
         text: str,
         dialect: str | None,
         audio_path: str,
@@ -181,6 +181,8 @@ class ProfileStore:
         model: str = "habibi-tts",
         language: str | None = None,
         elapsed_seconds: float = 0.0,
+        instruct: str | None = None,
+        speaker: str | None = None,
     ) -> dict:
         gen_id = Path(audio_path).parent.name
         now = datetime.now(timezone.utc).isoformat()
@@ -205,6 +207,8 @@ class ProfileStore:
             "created_at": now,
             "model": model,
             "language": language,
+            "instruct": instruct,
+            "speaker": speaker,
         }
         with self._lock:
             self._data["generations"].append(generation)

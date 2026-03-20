@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Clock, Trash2, Download, ClipboardCopy, RotateCcw, Copy, Check, AudioLines, Timer } from 'lucide-react'
+import { Clock, Trash2, Download, ClipboardCopy, RotateCcw, Copy, Check, AudioLines, Timer, Wand2, Users } from 'lucide-react'
 import Header from '../components/layout/Header'
 import AudioPlayer from '../components/audio/AudioPlayer'
 import Dialog from '../components/ui/Dialog'
@@ -173,6 +173,11 @@ export default function HistoryPage() {
                       {expandedId === gen.id ? 'Show less' : 'Show more'}
                     </button>
                   )}
+                  {(gen.model === 'qwen3-tts-voice-design' || gen.model === 'qwen3-tts-custom-voice') && gen.instruct && (
+                    <p className="text-xs text-gray-500 mt-1 italic leading-snug line-clamp-2">
+                      {gen.instruct}
+                    </p>
+                  )}
                   <div className="flex items-center gap-2 mt-2 flex-wrap">
                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-300 text-gray-400">
                       {MODEL_INFO[gen.model || 'habibi-tts']?.name || gen.model || 'HabibiTTS'}
@@ -182,12 +187,31 @@ export default function HistoryPage() {
                         {DIALECT_MAP[gen.dialect]?.nameEn || gen.dialect}
                       </span>
                     )}
-                    {gen.model === 'qwen3-tts' && gen.language && (
+                    {(gen.model === 'qwen3-tts' || gen.model === 'qwen3-tts-voice-design' || gen.model === 'qwen3-tts-custom-voice') && gen.language && (
                       <span className="badge-accent text-[10px]">
                         {LANGUAGE_MAP[gen.language]?.name || gen.language}
                       </span>
                     )}
-                    <span className="text-[10px] text-gray-600">{gen.profile_name}</span>
+                    {gen.model === 'qwen3-tts-custom-voice' && gen.speaker && (
+                      <span className="badge-accent text-[10px]">
+                        {gen.speaker.replace('_', ' ')}
+                      </span>
+                    )}
+                    {gen.model === 'qwen3-tts-voice-design' ? (
+                      <span className="flex items-center gap-0.5 text-[10px] text-gray-500">
+                        <Wand2 className="w-2.5 h-2.5" />
+                        Voice Design
+                      </span>
+                    ) : gen.model === 'qwen3-tts-custom-voice' ? (
+                      <span className="flex items-center gap-0.5 text-[10px] text-gray-500">
+                        <Users className="w-2.5 h-2.5" />
+                        Preset Voice
+                      </span>
+                    ) : (
+                      gen.profile_name && (
+                        <span className="text-[10px] text-gray-600">{gen.profile_name}</span>
+                      )
+                    )}
                     {gen.elapsed_seconds ? (
                       <span className="flex items-center gap-0.5 text-[10px] text-gray-600">
                         <Timer className="w-2.5 h-2.5" />

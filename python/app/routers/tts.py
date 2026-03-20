@@ -32,18 +32,128 @@ _cancelled = threading.Event()
 @router.post("/tts/generate", response_model=GenerationResponse)
 async def generate_speech(request: GenerateRequest):
     """
-    Generate speech from text using the TTS model associated with the profile.
+    Generate speech from text.
 
-    Flow
-    ----
-    1. Look up the profile to obtain its ``model`` (and optional ``language``).
-    2. Ask the ModelManager for the engine, which will unload any other active
-       engine and begin loading the requested one if it isn't already loaded.
-    3. Wait until the engine is ready (polling in a background thread).
-    4. Run inference and persist the generation record.
+    Two modes are supported:
+
+    Flow A — Voice cloning (profile-based):
+        ``profile_id`` is provided.  The profile supplies reference audio,
+        transcript, and model choice.
+
+    Flow B — Profileless generation (no profile):
+        ``profile_id`` is None.  ``model`` must be one of
+        ``"qwen3-tts-voice-design"`` or ``"qwen3-tts-custom-voice"``.
+        Voice design requires ``instruct``; custom voice requires ``speaker``.
     """
     _cancelled.clear()
 
+    # ------------------------------------------------------------------ #
+    # Flow B — Profileless generation (voice design or custom voice)
+    # ------------------------------------------------------------------ #
+    if request.profile_id is None:
+        model_id = request.model  # validated non-None by GenerateRequest
+
+        if model_id not in ("qwen3-tts-voice-design", "qwen3-tts-custom-voice"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Model '{model_id}' requires a voice profile",
+            )
+
+        try:
+            engine = model_manager.get_engine_for_model(model_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc))
+
+        await _wait_for_engine(engine, model_id)
+
+        language = request.language or "English"
+
+        if model_id == "qwen3-tts-voice-design":
+            instruct = request.instruct  # non-empty guaranteed by validator
+            logger.info(
+                "Generating speech (voice design): model=%s language=%s "
+                "instruct_len=%d text_len=%d",
+                model_id,
+                language,
+                len(instruct),
+                len(request.text),
+            )
+            gen_start_time = time.time()
+            try:
+                result = await asyncio.to_thread(
+                    engine.generate,
+                    gen_text=request.text,
+                    instruct=instruct,
+                    language=language,
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc))
+            except Exception as exc:
+                logger.error("Voice design generation failed: %s", exc, exc_info=True)
+                raise HTTPException(
+                    status_code=500,
+                    detail="TTS generation failed unexpectedly. Check server logs for details.",
+                )
+        else:  # qwen3-tts-custom-voice
+            logger.info(
+                "Generating speech (custom voice): model=%s language=%s "
+                "speaker=%s instruct_len=%d text_len=%d",
+                model_id,
+                language,
+                request.speaker,
+                len(request.instruct) if request.instruct else 0,
+                len(request.text),
+            )
+            gen_start_time = time.time()
+            generate_kwargs = {
+                "gen_text": request.text,
+                "speaker": request.speaker,
+                "language": language,
+            }
+            if request.instruct:
+                generate_kwargs["instruct"] = request.instruct
+            try:
+                result = await asyncio.to_thread(engine.generate, **generate_kwargs)
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc))
+            except Exception as exc:
+                logger.error("Custom voice generation failed: %s", exc, exc_info=True)
+                raise HTTPException(
+                    status_code=500,
+                    detail="TTS generation failed unexpectedly. Check server logs for details.",
+                )
+
+        if _cancelled.is_set():
+            try:
+                gen_dir = Path(result["audio_path"]).parent
+                if gen_dir.exists():
+                    shutil.rmtree(gen_dir)
+            except Exception:
+                pass
+            raise HTTPException(status_code=409, detail="Generation cancelled")
+
+        gen_elapsed = time.time() - gen_start_time
+
+        generation = profile_store.add_generation(
+            profile_id=None,
+            profile_name=None,
+            text=request.text,
+            dialect=None,
+            audio_path=result["audio_path"],
+            duration=result["duration"],
+            model=model_id,
+            language=language,
+            elapsed_seconds=gen_elapsed,
+            instruct=request.instruct,
+            speaker=request.speaker,
+        )
+        return generation
+
+    # ------------------------------------------------------------------ #
+    # Flow A — Voice cloning (profile-based, existing behaviour)
+    # ------------------------------------------------------------------ #
     profile = profile_store.get(request.profile_id)
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
@@ -59,34 +169,7 @@ async def generate_speech(request: GenerateRequest):
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
 
-    # Block until the engine is ready (it may still be loading)
-    if not engine.is_loaded:
-        max_wait_seconds = 300  # 5-minute upper bound
-        poll_interval = 1.0
-        waited = 0.0
-        while not engine.is_loaded and waited < max_wait_seconds:
-            await asyncio.sleep(poll_interval)
-            waited += poll_interval
-            status = engine.loading_status
-            if status == "error":
-                raise HTTPException(
-                    status_code=503,
-                    detail="Engine failed to load. Check server logs for details.",
-                )
-            if status == "not_installed":
-                raise HTTPException(
-                    status_code=503,
-                    detail=(
-                        f"The '{model_id}' package is not installed on this server. "
-                        "Contact your administrator."
-                    ),
-                )
-
-        if not engine.is_loaded:
-            raise HTTPException(
-                status_code=503,
-                detail=f"Model '{model_id}' did not finish loading in time.",
-            )
+    await _wait_for_engine(engine, model_id)
 
     # Build engine-specific kwargs
     if model_id == "habibi-tts":
@@ -172,6 +255,44 @@ async def generate_speech(request: GenerateRequest):
     )
 
     return generation
+
+
+async def _wait_for_engine(engine, model_id: str) -> None:
+    """
+    Poll until *engine* is loaded.
+
+    Raises HTTPException (503) if the engine fails to load or is not
+    installed, or if it does not become ready within the time limit.
+    """
+    if engine.is_loaded:
+        return
+
+    max_wait_seconds = 300  # 5-minute upper bound
+    poll_interval = 1.0
+    waited = 0.0
+    while not engine.is_loaded and waited < max_wait_seconds:
+        await asyncio.sleep(poll_interval)
+        waited += poll_interval
+        status = engine.loading_status
+        if status.startswith("error"):
+            raise HTTPException(
+                status_code=503,
+                detail="Engine failed to load. Check server logs for details.",
+            )
+        if status == "not_installed":
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    f"The '{model_id}' package is not installed on this server. "
+                    "Contact your administrator."
+                ),
+            )
+
+    if not engine.is_loaded:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Model '{model_id}' did not finish loading in time.",
+        )
 
 
 @router.post("/tts/cancel")

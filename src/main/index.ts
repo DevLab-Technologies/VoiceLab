@@ -131,13 +131,18 @@ app.whenReady().then(async () => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  try {
-    await startPythonBackend()
-  } catch (err) {
-    console.error('Failed to start Python backend:', err)
+  createWindow()
+
+  const onProgress = (stage: string, message: string): void => {
+    mainWindow?.webContents.send('backend-status', { stage, message })
   }
 
-  createWindow()
+  try {
+    await startPythonBackend(onProgress)
+  } catch (err) {
+    console.error('Failed to start Python backend:', err)
+    mainWindow?.webContents.send('backend-status', { stage: 'error', message: String(err) })
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

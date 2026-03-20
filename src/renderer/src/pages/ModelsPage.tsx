@@ -8,7 +8,9 @@ import {
   AlertCircle,
   Languages,
   Globe,
-  AudioLines
+  AudioLines,
+  Wand2,
+  Users
 } from 'lucide-react'
 import Header from '../components/layout/Header'
 import { useAppStore } from '../store'
@@ -17,7 +19,9 @@ import type { ModelId } from '../types/model'
 
 const MODEL_ICONS: Record<ModelId, typeof Globe> = {
   'habibi-tts': Languages,
-  'qwen3-tts': Globe
+  'qwen3-tts': Globe,
+  'qwen3-tts-voice-design': Wand2,
+  'qwen3-tts-custom-voice': Users
 }
 
 export default function ModelsPage() {
@@ -58,7 +62,7 @@ export default function ModelsPage() {
     }
   }
 
-  const modelIds: ModelId[] = ['habibi-tts', 'qwen3-tts']
+  const modelIds: ModelId[] = ['habibi-tts', 'qwen3-tts', 'qwen3-tts-voice-design', 'qwen3-tts-custom-voice']
 
   return (
     <motion.div
